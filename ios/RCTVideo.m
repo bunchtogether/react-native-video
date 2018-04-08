@@ -94,6 +94,7 @@ static NSString *const timedMetadata = @"timedMetadata";
     playerLayer.rctDelegate = self;
     playerLayer.view.frame = self.bounds;
     playerLayer.player = _player;
+    playerLayer.player.automaticallyWaitsToMinimizeStalling = NO;
     playerLayer.view.frame = self.bounds;
     return playerLayer;
 }

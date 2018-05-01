@@ -247,7 +247,10 @@ export default class Video extends Component {
 }
 
 Video.prefetch = (uri) => {
-  return RCTVideoNativeModule.prefetch(uri)
+  if(RCTVideoNativeModule.prefetch) {
+    return RCTVideoNativeModule.prefetch(uri)
+  }
+  return Promise.resolve();
 }
 
 Video.propTypes = {

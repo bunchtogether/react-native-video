@@ -1,4 +1,5 @@
 #import "RCTVideoManager.h"
+#import "RCTVideoDownloader.h"
 #import "RCTVideo.h"
 #import <React/RCTBridge.h>
 #import <AVFoundation/AVFoundation.h>
@@ -9,9 +10,16 @@ RCT_EXPORT_MODULE();
 
 @synthesize bridge = _bridge;
 
+-(id) init {
+    if ((self = [super init])) {
+        _downloader = [[RCTVideoDownloader alloc] init];
+    }
+    return self;
+}
+
 - (UIView *)view
 {
-  return [[RCTVideo alloc] initWithEventDispatcher:self.bridge.eventDispatcher];
+    return [[RCTVideo alloc] initWithEventDispatcherAndDownloader:self.bridge.eventDispatcher downloader:_downloader];
 }
 
 - (dispatch_queue_t)methodQueue
@@ -19,6 +27,12 @@ RCT_EXPORT_MODULE();
     return dispatch_get_main_queue();
 }
 
+RCT_EXPORT_METHOD(prefetch:(NSString *)uri
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+{
+    [_downloader prefetch:uri resolve:resolve reject:reject];
+}
 RCT_EXPORT_VIEW_PROPERTY(src, NSDictionary);
 RCT_EXPORT_VIEW_PROPERTY(resizeMode, NSString);
 RCT_EXPORT_VIEW_PROPERTY(repeat, BOOL);

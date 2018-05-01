@@ -10,6 +10,8 @@ const styles = StyleSheet.create({
   },
 });
 
+const RCTVideoNativeModule = NativeModules.VideoManager;
+
 export default class Video extends Component {
 
   constructor(props) {
@@ -242,6 +244,10 @@ export default class Video extends Component {
       />
     );
   }
+}
+
+Video.prefetch = (uri) => {
+  return RCTVideoNativeModule.prefetch(uri)
 }
 
 Video.propTypes = {

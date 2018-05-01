@@ -3,6 +3,7 @@
 #import <React/RCTBridgeModule.h>
 #import <React/RCTEventDispatcher.h>
 #import <React/UIView+React.h>
+#import "RCTVideoDownloader.h"
 
 static NSString *const statusKeyPath = @"status";
 static NSString *const playbackLikelyToKeepUpKeyPath = @"playbackLikelyToKeepUp";
@@ -49,11 +50,12 @@ static NSString *const timedMetadata = @"timedMetadata";
   UIViewController * _presentingViewController;
 }
 
-- (instancetype)initWithEventDispatcher:(RCTEventDispatcher *)eventDispatcher
+- (instancetype)initWithEventDispatcherAndDownloader:(RCTEventDispatcher *)eventDispatcher downloader:(RCTVideoDownloader *)downloader
 {
   if ((self = [super init])) {
     _eventDispatcher = eventDispatcher;
-
+      
+    _downloader = downloader;
     _playbackRateObserverRegistered = NO;
     _playbackStalled = NO;
     _rate = 1.0;
@@ -325,8 +327,9 @@ static NSString *const timedMetadata = @"timedMetadata";
     [[NSURL alloc] initFileURLWithPath:[[NSBundle mainBundle] pathForResource:uri ofType:type]];
 
   if (isNetwork) {
-    NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
-    AVURLAsset *asset = [AVURLAsset URLAssetWithURL:url options:@{AVURLAssetHTTPCookiesKey : cookies}];
+    
+    AVURLAsset *asset = [_downloader getAsset:url];
+    //[AVURLAsset URLAssetWithURL:url options:@{AVURLAssetHTTPCookiesKey : cookies}];
     return [AVPlayerItem playerItemWithAsset:asset];
   }
   else if (isAsset) {

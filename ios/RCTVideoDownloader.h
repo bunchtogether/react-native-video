@@ -9,9 +9,10 @@
 - (instancetype)init;
 
 - (void)prefetch:(NSString *)uri
-        resolve:(RCTPromiseResolveBlock)resolve
-        reject:(RCTPromiseRejectBlock)reject;
+        cacheKey:(NSString *)cacheKey
+         resolve:(RCTPromiseResolveBlock)resolve
+         reject:(RCTPromiseRejectBlock)reject;
 
-- (AVURLAsset *)getAsset:(NSURL *)url;
+- (AVURLAsset *)getAsset:(NSURL *)url cacheKey:(NSString *)cacheKey;
 
 @end

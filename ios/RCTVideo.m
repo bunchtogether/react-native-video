@@ -96,7 +96,7 @@ static NSString *const timedMetadata = @"timedMetadata";
     playerLayer.rctDelegate = self;
     playerLayer.view.frame = self.bounds;
     playerLayer.player = _player;
-    playerLayer.player.automaticallyWaitsToMinimizeStalling = NO;
+    //playerLayer.player.automaticallyWaitsToMinimizeStalling = NO;
     playerLayer.view.frame = self.bounds;
     return playerLayer;
 }
@@ -275,23 +275,18 @@ static NSString *const timedMetadata = @"timedMetadata";
   [self removePlayerItemObservers];
   _playerItem = [self playerItemForSource:source];
   [self addPlayerItemObservers];
-
   [_player pause];
   [self removePlayerLayer];
   [_playerViewController.view removeFromSuperview];
   _playerViewController = nil;
-
   if (_playbackRateObserverRegistered) {
     [_player removeObserver:self forKeyPath:playbackRate context:nil];
     _playbackRateObserverRegistered = NO;
   }
-
   _player = [AVPlayer playerWithPlayerItem:_playerItem];
   _player.actionAtItemEnd = AVPlayerActionAtItemEndNone;
-
   [_player addObserver:self forKeyPath:playbackRate options:0 context:nil];
   _playbackRateObserverRegistered = YES;
-
   const Float64 progressUpdateIntervalMS = _progressUpdateInterval / 1000;
   // @see endScrubbing in AVPlayerDemoPlaybackViewController.m of https://developer.apple.com/library/ios/samplecode/AVPlayerDemo/Introduction/Intro.html
   __weak RCTVideo *weakSelf = self;
@@ -299,7 +294,6 @@ static NSString *const timedMetadata = @"timedMetadata";
                                                         queue:NULL
                                                    usingBlock:^(CMTime time) { [weakSelf sendProgressUpdate]; }
                    ];
-
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
     //Perform on next run loop, otherwise onVideoLoadStart is nil
     if(self.onVideoLoadStart) {
@@ -321,18 +315,18 @@ static NSString *const timedMetadata = @"timedMetadata";
   bool isAsset = [RCTConvert BOOL:[source objectForKey:@"isAsset"]];
   NSString *uri = [source objectForKey:@"uri"];
   NSString *type = [source objectForKey:@"type"];
+  
 
   NSURL *url = (isNetwork || isAsset) ?
     [NSURL URLWithString:uri] :
     [[NSURL alloc] initFileURLWithPath:[[NSBundle mainBundle] pathForResource:uri ofType:type]];
 
   if (isNetwork) {
-    // NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
-    // AVURLAsset *asset = [AVURLAsset URLAssetWithURL:url options:@{AVURLAssetHTTPCookiesKey : cookies}];
-    AVURLAsset *asset = [_downloader getAsset:url];
+    NSString *cacheKey = [source objectForKey:@"cacheKey"];
+    NSString *ck = cacheKey ? cacheKey : uri;
+    AVURLAsset *asset = [_downloader getAsset:url cacheKey:ck];
     return [AVPlayerItem playerItemWithAsset:asset];
-  }
-  else if (isAsset) {
+  } else if (isAsset) {
     AVURLAsset *asset = [AVURLAsset URLAssetWithURL:url options:nil];
     return [AVPlayerItem playerItemWithAsset:asset];
   }

@@ -186,6 +186,7 @@ export default class Video extends Component {
       style: [styles.base, nativeProps.style],
       resizeMode: nativeResizeMode,
       src: {
+        cacheKey: this.props.cacheKey,
         uri,
         isNetwork,
         isAsset,
@@ -246,9 +247,12 @@ export default class Video extends Component {
   }
 }
 
-Video.prefetch = (uri) => {
+Video.prefetch = (uri, cacheKey) => {
+  if(!uri) {
+    throw new Error("Missing required argument 'uri'");
+  }
   if(RCTVideoNativeModule.prefetch) {
-    return RCTVideoNativeModule.prefetch(uri)
+    return RCTVideoNativeModule.prefetch(uri, cacheKey || uri);
   }
   return Promise.resolve();
 }
@@ -280,6 +284,7 @@ Video.propTypes = {
     PropTypes.number
   ]),
   resizeMode: PropTypes.string,
+  cacheKey: PropTypes.string,
   poster: PropTypes.string,
   repeat: PropTypes.bool,
   paused: PropTypes.bool,

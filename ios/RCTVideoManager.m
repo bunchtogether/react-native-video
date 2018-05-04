@@ -28,10 +28,11 @@ RCT_EXPORT_MODULE();
 }
 
 RCT_EXPORT_METHOD(prefetch:(NSString *)uri
+                  cacheKey:(NSString *)cacheKey
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 {
-    [_downloader prefetch:uri resolve:resolve reject:reject];
+    [_downloader prefetch:uri cacheKey:cacheKey resolve:resolve reject:reject];
 }
 RCT_EXPORT_VIEW_PROPERTY(src, NSDictionary);
 RCT_EXPORT_VIEW_PROPERTY(resizeMode, NSString);

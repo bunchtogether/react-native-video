@@ -251,7 +251,8 @@ Video.prefetch = (uri, cacheKey) => {
   if(!uri) {
     throw new Error("Missing required argument 'uri'");
   }
-  if(RCTVideoNativeModule.prefetch) {
+
+  if (RCTVideoNativeModule && RCTVideoNativeModule.prefetch) {
     return RCTVideoNativeModule.prefetch(uri, cacheKey || uri);
   }
   return Promise.resolve();

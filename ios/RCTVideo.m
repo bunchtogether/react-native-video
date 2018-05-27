@@ -256,7 +256,12 @@ static NSString *const timedMetadata = @"timedMetadata";
 - (void)removePlayerItemObservers
 {
   if (_playerLayer) {
-    [_playerLayer removeObserver:self forKeyPath:readyForDisplayKeyPath];
+    @try {
+      [_playerLayer removeObserver:self forKeyPath:readyForDisplayKeyPath];
+    } @catch(id exception){
+      // Observer did not exist.
+      NSLog(@"Unable to remove observer.");
+    }
   }
   if (_playerItemObserversSet) {
     [_playerItem removeObserver:self forKeyPath:statusKeyPath];
@@ -730,7 +735,12 @@ static NSString *const timedMetadata = @"timedMetadata";
 - (void)removePlayerLayer
 {
     [_playerLayer removeFromSuperlayer];
-    [_playerLayer removeObserver:self forKeyPath:readyForDisplayKeyPath];
+    @try {
+      [_playerLayer removeObserver:self forKeyPath:readyForDisplayKeyPath];
+    } @catch(id exception){
+      // Observer did not exist.
+      NSLog(@"Unable to remove observer.");
+    }
     _playerLayer = nil;
 }
 

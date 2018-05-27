@@ -24,6 +24,8 @@
 @interface RCTVideoDownloader : NSObject <AVAssetDownloadDelegate> {
   AVAssetDownloadURLSession *avSession;
   NSMutableDictionary *mediaSelectionTasks;
+  NSMutableDictionary *resolves;
+  NSMutableDictionary *rejects;
   NSMutableDictionary *tasks;
 }
 
@@ -36,6 +38,8 @@
   self = [super init];
   if (self) {
     mediaSelectionTasks = [[NSMutableDictionary alloc] init];
+    resolves = [[NSMutableDictionary alloc] init];
+    rejects = [[NSMutableDictionary alloc] init];
     tasks = [[NSMutableDictionary alloc] init];
     NSURLSessionConfiguration *config = [NSURLSessionConfiguration backgroundSessionConfigurationWithIdentifier:@"downloadedMedia"];
     config.networkServiceType = NSURLNetworkServiceTypeVideo;
@@ -78,6 +82,12 @@
         AVURLAsset *asset = [AVURLAsset URLAssetWithURL:location options:@{AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
         AVAssetCache* assetCache = asset.assetCache;
         if (assetCache) {
+          RCTPromiseResolveBlock resolve = [resolves objectForKey:cacheKey];
+          if(resolve) {
+            [resolves removeObjectForKey:cacheKey];
+            [rejects removeObjectForKey:cacheKey];
+            resolve(@{@"success":@YES, @"status": @"cached"});
+          }
           NSLog(@"Cached hit for asset %@ with key %@", path, cacheKey);
           return asset;
         }
@@ -105,8 +115,11 @@
   #if !(TARGET_IPHONE_SIMULATOR)
     NSURL *url = [NSURL URLWithString:uri];
     [self getAsset:url cacheKey:cacheKey];
+    resolves[cacheKey] = resolve;
+    rejects[cacheKey] = reject;
+  #else
+    resolve(@{@"success":@YES});
   #endif
-  resolve(@{@"success":@YES});
 }
 
 -(MediaSelections*)nextMediaSelection:(AVURLAsset*)asset {
@@ -136,11 +149,18 @@
   NSString* cacheKey = assetDownloadTask.taskDescription;
   if(!cacheKey) {
     NSLog(@"Missing cache key for asset %@ in didFinishDownloadingToURL", path);
+    return;
   }
   AVURLAsset *asset = assetDownloadTask.URLAsset;
   AVAssetCache* assetCache = asset.assetCache;
   if (!assetCache) {
     NSLog(@"No asset cache for %@ %@", path, cacheKey);
+    RCTPromiseResolveBlock reject = [rejects objectForKey:cacheKey];
+    if(reject) {
+      [resolves removeObjectForKey:cacheKey];
+      [rejects removeObjectForKey:cacheKey];
+      reject(@{@"error":@"No assset cache"});
+    }
     return;
   }
   NSError *error = nil;
@@ -150,7 +170,19 @@
                                                      error:&error];
   if(error) {
     NSLog(@"Bookmark error for asset %@ with key %@", path, cacheKey);
+    RCTPromiseResolveBlock reject = [rejects objectForKey:cacheKey];
+    if(reject) {
+      [resolves removeObjectForKey:cacheKey];
+      [rejects removeObjectForKey:cacheKey];
+      reject(@{@"error":@"Bookmark error"});
+    }
     return;
+  }
+  RCTPromiseResolveBlock resolve = [resolves objectForKey:cacheKey];
+  if(resolve) {
+    [resolves removeObjectForKey:cacheKey];
+    [rejects removeObjectForKey:cacheKey];
+    resolve(@{@"success":@YES, @"status": @"saved"});
   }
   NSLog(@"Download saved for asset %@ with key %@", path, cacheKey);
   [[NSUserDefaults standardUserDefaults] setObject:bookmarkData forKey:cacheKey];
@@ -167,6 +199,7 @@
   NSString* path = assetDownloadTask.URLAsset.URL.path;
   if(!cacheKey) {
     NSLog(@"Missing cache key for asset %@ in didResolveMediaSelection", path);
+    return;
   }
   if (error) {
     NSLog(@"Download error %ld for asset %@ with key %@: %@", [error code], path, cacheKey, error);

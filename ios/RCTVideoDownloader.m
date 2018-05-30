@@ -82,13 +82,22 @@
         AVURLAsset *asset = [AVURLAsset URLAssetWithURL:location options:@{AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
         AVAssetCache* assetCache = asset.assetCache;
         if (assetCache) {
+          NSLog(@"Cached hit for asset %@ with key %@", path, cacheKey);
+          NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
+          asset.resourceLoader.preloadsEligibleContentKeys = YES;
+          AVAssetDownloadTask *task = [avSession assetDownloadTaskWithURLAsset:asset
+                                                                    assetTitle:@"Video Download"
+                                                              assetArtworkData:nil
+                                                                       options:nil];
+          task.taskDescription = cacheKey;
+          tasks[cacheKey] = task;
+          [task resume];
           RCTPromiseResolveBlock resolve = [resolves objectForKey:cacheKey];
           if(resolve) {
             [resolves removeObjectForKey:cacheKey];
             [rejects removeObjectForKey:cacheKey];
             resolve(@{@"success":@YES, @"status": @"cached"});
           }
-          NSLog(@"Cached hit for asset %@ with key %@", path, cacheKey);
           return asset;
         }
       }

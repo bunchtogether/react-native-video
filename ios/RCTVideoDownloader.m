@@ -1,6 +1,7 @@
 #import <Foundation/Foundation.h>
 #import <AVFoundation/AVFoundation.h>
 #import <React/RCTBridge.h>
+#import <React/RCTLog.h>
 #import <Security/Security.h>
 
 @interface MediaSelections : NSObject
@@ -51,6 +52,44 @@
     NSLog(@"RCTVideoDownloader initialization failed.");
   }
   return self;
+}
+
+- (BOOL)hasCachedAsset:(NSString *)cacheKey {
+#if TARGET_IPHONE_SIMULATOR
+  return NO;
+#else
+  AVAssetDownloadTask *existingTask = [tasks objectForKey:cacheKey];
+  if(existingTask) {
+    return YES;
+  }
+  NSData *bookmarkData = [[NSUserDefaults standardUserDefaults] objectForKey:cacheKey];
+  if(bookmarkData) {
+    NSError *error = nil;
+    BOOL stale;
+    NSURL *location = [NSURL URLByResolvingBookmarkData:bookmarkData
+                                                options:NSURLBookmarkResolutionWithoutUI
+                                          relativeToURL:nil
+                                    bookmarkDataIsStale:&stale
+                                                  error:&error];
+    if(error) {
+      return NO;
+    } else if(stale) {
+      return NO;
+    } else if(location) {
+      AVURLAsset *asset = [AVURLAsset URLAssetWithURL:location options:@{AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
+      AVAssetCache* assetCache = asset.assetCache;
+      if (assetCache) {
+        return YES;
+      }
+    }
+  }
+  return NO;
+#endif
+}
+
+- (void)clearCachedAsset:(NSString *)cacheKey {
+  RCTLog(@"Clearing %@", cacheKey);
+  [[NSUserDefaults standardUserDefaults] removeObjectForKey:cacheKey];
 }
 
 - (AVURLAsset *)getAsset:(NSURL *)url cacheKey:(NSString *)cacheKey {

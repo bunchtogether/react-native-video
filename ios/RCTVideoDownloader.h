@@ -14,5 +14,7 @@
          reject:(RCTPromiseRejectBlock)reject;
 
 - (AVURLAsset *)getAsset:(NSURL *)url cacheKey:(NSString *)cacheKey;
+- (BOOL)hasCachedAsset:(NSString *)cacheKey;
+- (void)clearCachedAsset:(NSString *)cacheKey;
 
 @end

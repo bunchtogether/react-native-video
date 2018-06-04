@@ -93,6 +93,10 @@
 }
 
 - (AVURLAsset *)getAsset:(NSURL *)url cacheKey:(NSString *)cacheKey {
+  NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
+  AVURLAsset *asset = [AVURLAsset URLAssetWithURL:url options:@{AVURLAssetHTTPCookiesKey : cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
+  return asset;
+  /*
   #if TARGET_IPHONE_SIMULATOR
     NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
     AVURLAsset *asset = [AVURLAsset URLAssetWithURL:url options:@{AVURLAssetHTTPCookiesKey : cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
@@ -154,6 +158,7 @@
     [task resume];
     return asset;
   #endif
+   */
 }
 
 - (void)prefetch:(NSString *)uri

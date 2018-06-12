@@ -93,10 +93,11 @@
 }
 
 - (AVURLAsset *)getAsset:(NSURL *)url cacheKey:(NSString *)cacheKey {
+  /*
   NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
   AVURLAsset *asset = [AVURLAsset URLAssetWithURL:url options:@{AVURLAssetHTTPCookiesKey : cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
   return asset;
-  /*
+   */
   #if TARGET_IPHONE_SIMULATOR
     NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
     AVURLAsset *asset = [AVURLAsset URLAssetWithURL:url options:@{AVURLAssetHTTPCookiesKey : cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
@@ -104,7 +105,8 @@
   #else
     NSString *path = url.path;
     AVAssetDownloadTask *existingTask = [tasks objectForKey:cacheKey];
-    if(existingTask) {
+    NSLog(@"Task duration %f", CMTimeGetSeconds(existingTask.URLAsset.duration));
+    if(existingTask && CMTimeGetSeconds(existingTask.URLAsset.duration) > 0) {
       return existingTask.URLAsset;
     }
     NSData *bookmarkData = [[NSUserDefaults standardUserDefaults] objectForKey:cacheKey];
@@ -124,9 +126,9 @@
       } else if(location) {
         AVURLAsset *asset = [AVURLAsset URLAssetWithURL:location options:@{AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
         AVAssetCache* assetCache = asset.assetCache;
-        if (assetCache) {
+        NSLog(@"Bookmark duration %f", CMTimeGetSeconds(asset.duration));
+        if (assetCache && CMTimeGetSeconds(asset.duration) > 0) {
           NSLog(@"Cached hit for asset %@ with key %@", path, cacheKey);
-          NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
           asset.resourceLoader.preloadsEligibleContentKeys = YES;
           AVAssetDownloadTask *task = [avSession assetDownloadTaskWithURLAsset:asset
                                                                     assetTitle:@"Video Download"
@@ -158,7 +160,6 @@
     [task resume];
     return asset;
   #endif
-   */
 }
 
 - (void)prefetch:(NSString *)uri
@@ -255,7 +256,7 @@
     return;
   }
   if (error) {
-    NSLog(@"Download error %ld for asset %@ with key %@: %@", [error code], path, cacheKey, error);
+    NSLog(@"Download error %ld, %@ for asset %@ with key %@: %@", [error code], [error localizedDescription], path, cacheKey, error);
     return;
   }
   MediaSelections *selections = [self nextMediaSelection:assetDownloadTask.URLAsset];

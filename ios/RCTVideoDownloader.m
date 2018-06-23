@@ -47,7 +47,7 @@
     config.allowsCellularAccess = true;
     config.sessionSendsLaunchEvents = true;
     config.HTTPCookieAcceptPolicy = NSHTTPCookieAcceptPolicyAlways;
-    avSession = [AVAssetDownloadURLSession sessionWithConfiguration:config assetDownloadDelegate:self delegateQueue:[NSOperationQueue mainQueue]];
+    avSession = [AVAssetDownloadURLSession sessionWithConfiguration:config assetDownloadDelegate:self delegateQueue:nil];
   } else {
     NSLog(@"RCTVideoDownloader initialization failed.");
   }
@@ -166,6 +166,7 @@
         cacheKey:(NSString *)cacheKey
          resolve:(RCTPromiseResolveBlock)resolve
           reject:(RCTPromiseRejectBlock)reject {
+  //resolve(@{@"success":@YES});
   #if !(TARGET_IPHONE_SIMULATOR)
     NSURL *url = [NSURL URLWithString:uri];
     [self getAsset:url cacheKey:cacheKey];

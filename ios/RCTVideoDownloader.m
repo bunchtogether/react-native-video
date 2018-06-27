@@ -94,73 +94,73 @@
 
 - (AVURLAsset *)getAsset:(NSURL *)url cacheKey:(NSString *)cacheKey {
   /*
+   NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
+   AVURLAsset *asset = [AVURLAsset URLAssetWithURL:url options:@{AVURLAssetHTTPCookiesKey : cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
+   return asset;
+   */
+#if TARGET_IPHONE_SIMULATOR
   NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
   AVURLAsset *asset = [AVURLAsset URLAssetWithURL:url options:@{AVURLAssetHTTPCookiesKey : cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
   return asset;
-   */
-  #if TARGET_IPHONE_SIMULATOR
-    NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
-    AVURLAsset *asset = [AVURLAsset URLAssetWithURL:url options:@{AVURLAssetHTTPCookiesKey : cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
-    return asset;
-  #else
-    NSString *path = url.path;
-    AVAssetDownloadTask *existingTask = [tasks objectForKey:cacheKey];
-    NSLog(@"Task duration %f", CMTimeGetSeconds(existingTask.URLAsset.duration));
-    //if(existingTask && CMTimeGetSeconds(existingTask.URLAsset.duration) > 0) {
-    if(existingTask) {
-      return existingTask.URLAsset;
-    }
-    NSData *bookmarkData = [[NSUserDefaults standardUserDefaults] objectForKey:cacheKey];
-    if(bookmarkData) {
-      NSLog(@"Found bookmark for asset %@ with key %@", path, cacheKey);
-      NSError *error = nil;
-      BOOL stale;
-      NSURL *location = [NSURL URLByResolvingBookmarkData:bookmarkData
-                                                  options:NSURLBookmarkResolutionWithoutUI
-                                            relativeToURL:nil
-                                      bookmarkDataIsStale:&stale
-                                                    error:&error];
-      if(error) {
-        NSLog(@"Error getting cached asset %@ with key %@: %@", path, cacheKey, error);
-      } else if(stale) {
-        NSLog(@"Cached asset %@ with key  %@ is stale", path, cacheKey);
-      } else if(location) {
-        AVURLAsset *asset = [AVURLAsset URLAssetWithURL:location options:@{AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
-        AVAssetCache* assetCache = asset.assetCache;
-        NSLog(@"Bookmark duration %f", CMTimeGetSeconds(asset.duration));
-        if (assetCache && CMTimeGetSeconds(asset.duration) > 0) {
-          NSLog(@"Cached hit for asset %@ with key %@", path, cacheKey);
-          asset.resourceLoader.preloadsEligibleContentKeys = YES;
-          AVAssetDownloadTask *task = [avSession assetDownloadTaskWithURLAsset:asset
-                                                                    assetTitle:@"Video Download"
-                                                              assetArtworkData:nil
-                                                                       options:nil];
-          task.taskDescription = cacheKey;
-          tasks[cacheKey] = task;
-          [task resume];
-          RCTPromiseResolveBlock resolve = [resolves objectForKey:cacheKey];
-          if(resolve) {
-            [resolves removeObjectForKey:cacheKey];
-            [rejects removeObjectForKey:cacheKey];
-            resolve(@{@"success":@YES, @"status": @"cached"});
-          }
-          return asset;
+#else
+  NSString *path = url.path;
+  AVAssetDownloadTask *existingTask = [tasks objectForKey:cacheKey];
+  NSLog(@"Task duration %f", CMTimeGetSeconds(existingTask.URLAsset.duration));
+  if(existingTask && CMTimeGetSeconds(existingTask.URLAsset.duration) > 0) {
+  //if(existingTask) {
+    return existingTask.URLAsset;
+  }
+  NSData *bookmarkData = [[NSUserDefaults standardUserDefaults] objectForKey:cacheKey];
+  if(bookmarkData) {
+    NSLog(@"Found bookmark for asset %@ with key %@", path, cacheKey);
+    NSError *error = nil;
+    BOOL stale;
+    NSURL *location = [NSURL URLByResolvingBookmarkData:bookmarkData
+                                                options:NSURLBookmarkResolutionWithoutUI
+                                          relativeToURL:nil
+                                    bookmarkDataIsStale:&stale
+                                                  error:&error];
+    if(error) {
+      NSLog(@"Error getting cached asset %@ with key %@: %@", path, cacheKey, error);
+    } else if(stale) {
+      NSLog(@"Cached asset %@ with key  %@ is stale", path, cacheKey);
+    } else if(location) {
+      AVURLAsset *asset = [AVURLAsset URLAssetWithURL:location options:@{AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
+      AVAssetCache* assetCache = asset.assetCache;
+      NSLog(@"Bookmark duration %f", CMTimeGetSeconds(asset.duration));
+      if (assetCache && CMTimeGetSeconds(asset.duration) > 0) {
+        NSLog(@"Cached hit for asset %@ with key %@", path, cacheKey);
+        asset.resourceLoader.preloadsEligibleContentKeys = YES;
+        AVAssetDownloadTask *task = [avSession assetDownloadTaskWithURLAsset:asset
+                                                                  assetTitle:@"Video Download"
+                                                            assetArtworkData:nil
+                                                                     options:nil];
+        task.taskDescription = cacheKey;
+        tasks[cacheKey] = task;
+        [task resume];
+        RCTPromiseResolveBlock resolve = [resolves objectForKey:cacheKey];
+        if(resolve) {
+          [resolves removeObjectForKey:cacheKey];
+          [rejects removeObjectForKey:cacheKey];
+          resolve(@{@"success":@YES, @"status": @"cached"});
         }
+        return asset;
       }
     }
-    NSLog(@"Prefetching asset %@ with key %@", path, cacheKey);
-    NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
-    AVURLAsset *asset = [AVURLAsset URLAssetWithURL:url options:@{AVURLAssetHTTPCookiesKey : cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
-    asset.resourceLoader.preloadsEligibleContentKeys = YES;
-    AVAssetDownloadTask *task = [avSession assetDownloadTaskWithURLAsset:asset
-                                                              assetTitle:@"Video Download"
-                                                        assetArtworkData:nil
-                                                                 options:nil];
-    task.taskDescription = cacheKey;
-    tasks[cacheKey] = task;
-    [task resume];
-    return asset;
-  #endif
+  }
+  NSLog(@"Prefetching asset %@ with key %@", path, cacheKey);
+  NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
+  AVURLAsset *asset = [AVURLAsset URLAssetWithURL:url options:@{AVURLAssetHTTPCookiesKey : cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
+  asset.resourceLoader.preloadsEligibleContentKeys = YES;
+  AVAssetDownloadTask *task = [avSession assetDownloadTaskWithURLAsset:asset
+                                                            assetTitle:@"Video Download"
+                                                      assetArtworkData:nil
+                                                               options:nil];
+  task.taskDescription = cacheKey;
+  tasks[cacheKey] = task;
+  [task resume];
+  return asset;
+#endif
 }
 
 - (void)prefetch:(NSString *)uri
@@ -168,14 +168,14 @@
          resolve:(RCTPromiseResolveBlock)resolve
           reject:(RCTPromiseRejectBlock)reject {
   //resolve(@{@"success":@YES});
-  #if !(TARGET_IPHONE_SIMULATOR)
-    NSURL *url = [NSURL URLWithString:uri];
-    [self getAsset:url cacheKey:cacheKey];
-    resolves[cacheKey] = resolve;
-    rejects[cacheKey] = reject;
-  #else
-    resolve(@{@"success":@YES});
-  #endif
+#if !(TARGET_IPHONE_SIMULATOR)
+  NSURL *url = [NSURL URLWithString:uri];
+  [self getAsset:url cacheKey:cacheKey];
+  resolves[cacheKey] = resolve;
+  rejects[cacheKey] = reject;
+#else
+  resolve(@{@"success":@YES});
+#endif
 }
 
 -(MediaSelections*)nextMediaSelection:(AVURLAsset*)asset {
@@ -201,48 +201,52 @@
 }
 
 - (void)URLSession:(NSURLSession *)session assetDownloadTask:(AVAssetDownloadTask *)assetDownloadTask didFinishDownloadingToURL:(NSURL *)location {
-  NSString* path = assetDownloadTask.URLAsset.URL.path;
-  NSString* cacheKey = assetDownloadTask.taskDescription;
-  if(!cacheKey) {
-    NSLog(@"Missing cache key for asset %@ in didFinishDownloadingToURL", path);
-    return;
-  }
-  AVURLAsset *asset = assetDownloadTask.URLAsset;
-  AVAssetCache* assetCache = asset.assetCache;
-  if (!assetCache) {
-    NSLog(@"No asset cache for %@ %@", path, cacheKey);
-    RCTPromiseResolveBlock reject = [rejects objectForKey:cacheKey];
-    if(reject) {
+  dispatch_async(dispatch_get_main_queue(), ^() {
+    NSString* path = assetDownloadTask.URLAsset.URL.path;
+    NSString* cacheKey = assetDownloadTask.taskDescription;
+    if(!cacheKey) {
+      NSLog(@"Missing cache key for asset %@ in didFinishDownloadingToURL", path);
+      return;
+    }
+    AVURLAsset *asset = assetDownloadTask.URLAsset;
+    AVAssetCache* assetCache = asset.assetCache;
+    if (!assetCache) {
+      NSLog(@"No asset cache for %@ %@", path, cacheKey);
+      RCTPromiseResolveBlock reject = [rejects objectForKey:cacheKey];
+      if(reject) {
+        [resolves removeObjectForKey:cacheKey];
+        [rejects removeObjectForKey:cacheKey];
+        [tasks removeObjectForKey:cacheKey];
+        reject(@{@"error":@"No assset cache"});
+      }
+      return;
+    }
+    NSError *error = nil;
+    NSData *bookmarkData = [location bookmarkDataWithOptions:NSURLBookmarkCreationMinimalBookmark
+                              includingResourceValuesForKeys:nil
+                                               relativeToURL:nil
+                                                       error:&error];
+    if(error) {
+      NSLog(@"Bookmark error for asset %@ with key %@", path, cacheKey);
+      RCTPromiseResolveBlock reject = [rejects objectForKey:cacheKey];
+      if(reject) {
+        [resolves removeObjectForKey:cacheKey];
+        [rejects removeObjectForKey:cacheKey];
+        [tasks removeObjectForKey:cacheKey];
+        reject(@{@"error":@"Bookmark error"});
+      }
+      return;
+    }
+    RCTPromiseResolveBlock resolve = [resolves objectForKey:cacheKey];
+    if(resolve) {
       [resolves removeObjectForKey:cacheKey];
       [rejects removeObjectForKey:cacheKey];
-      reject(@{@"error":@"No assset cache"});
+      resolve(@{@"success":@YES, @"status": @"saved"});
     }
-    return;
-  }
-  NSError *error = nil;
-  NSData *bookmarkData = [location bookmarkDataWithOptions:NSURLBookmarkCreationMinimalBookmark
-                            includingResourceValuesForKeys:nil
-                                             relativeToURL:nil
-                                                     error:&error];
-  if(error) {
-    NSLog(@"Bookmark error for asset %@ with key %@", path, cacheKey);
-    RCTPromiseResolveBlock reject = [rejects objectForKey:cacheKey];
-    if(reject) {
-      [resolves removeObjectForKey:cacheKey];
-      [rejects removeObjectForKey:cacheKey];
-      reject(@{@"error":@"Bookmark error"});
-    }
-    return;
-  }
-  RCTPromiseResolveBlock resolve = [resolves objectForKey:cacheKey];
-  if(resolve) {
-    [resolves removeObjectForKey:cacheKey];
-    [rejects removeObjectForKey:cacheKey];
-    resolve(@{@"success":@YES, @"status": @"saved"});
-  }
-  NSLog(@"Download saved for asset %@ with key %@", path, cacheKey);
-  [[NSUserDefaults standardUserDefaults] setObject:bookmarkData forKey:cacheKey];
-  [[NSUserDefaults standardUserDefaults] synchronize];
+    NSLog(@"Download saved for asset %@ with key %@", path, cacheKey);
+    [[NSUserDefaults standardUserDefaults] setObject:bookmarkData forKey:cacheKey];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+  });
 }
 
 - (void)URLSession:(NSURLSession *)session assetDownloadTask:(AVAssetDownloadTask *)assetDownloadTask didResolveMediaSelection:(AVMediaSelection *)resolvedMediaSelection {
@@ -250,45 +254,49 @@
 }
 
 -(void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
-  AVAssetDownloadTask *assetDownloadTask = (AVAssetDownloadTask *)task;
-  NSString* cacheKey = assetDownloadTask.taskDescription;
-  NSString* path = assetDownloadTask.URLAsset.URL.path;
-  if(!cacheKey) {
-    NSLog(@"Missing cache key for asset %@ in didResolveMediaSelection", path);
-    return;
-  }
-  if (error) {
-    NSLog(@"Download error %ld, %@ for asset %@ with key %@: %@", [error code], [error localizedDescription], path, cacheKey, error);
-    return;
-  }
-  MediaSelections *selections = [self nextMediaSelection:assetDownloadTask.URLAsset];
-  if (selections.group != nil) {
-    AVMutableMediaSelection *originalMediaSelection = (AVMutableMediaSelection *)mediaSelectionTasks[assetDownloadTask];
-    if (originalMediaSelection == nil) {
+  dispatch_async(dispatch_get_main_queue(), ^() {
+    AVAssetDownloadTask *assetDownloadTask = (AVAssetDownloadTask *)task;
+    NSString* cacheKey = assetDownloadTask.taskDescription;
+    NSString* path = assetDownloadTask.URLAsset.URL.path;
+    if(!cacheKey) {
+      NSLog(@"Missing cache key for asset %@ in didResolveMediaSelection", path);
       return;
-    } else {
-      AVMutableMediaSelection *localMediaSelection = (AVMutableMediaSelection *)[originalMediaSelection mutableCopy];
-      AVMediaSelectionOption *option = selections.option;
-      AVMediaSelectionGroup *group = selections.group;
-      if (option && group) {
-        [localMediaSelection selectMediaOption: option inMediaSelectionGroup: group];
-      }
-      NSDictionary* downloadOptions = @{AVAssetDownloadTaskMediaSelectionKey: localMediaSelection};
-      AVAssetDownloadTask *nextTask = [avSession assetDownloadTaskWithURLAsset:assetDownloadTask.URLAsset
-                                                                    assetTitle:@"Video Download"
-                                                              assetArtworkData:nil
-                                                                       options:downloadOptions];
-      if (nextTask == nil) {
+    }
+    if (error) {
+      NSLog(@"Download error %ld, %@ for asset %@ with key %@: %@", [error code], [error localizedDescription], path, cacheKey, error);
+      [tasks removeObjectForKey:cacheKey];
+      return;
+    }
+    MediaSelections *selections = [self nextMediaSelection:assetDownloadTask.URLAsset];
+    if (selections.group != nil) {
+      AVMutableMediaSelection *originalMediaSelection = (AVMutableMediaSelection *)mediaSelectionTasks[assetDownloadTask];
+      if (originalMediaSelection == nil) {
         return;
       } else {
-        NSLog(@"Starting download of %@", option);
-        [nextTask resume];
+        AVMutableMediaSelection *localMediaSelection = (AVMutableMediaSelection *)[originalMediaSelection mutableCopy];
+        AVMediaSelectionOption *option = selections.option;
+        AVMediaSelectionGroup *group = selections.group;
+        if (option && group) {
+          [localMediaSelection selectMediaOption: option inMediaSelectionGroup: group];
+        }
+        NSDictionary* downloadOptions = @{AVAssetDownloadTaskMediaSelectionKey: localMediaSelection};
+        AVAssetDownloadTask *nextTask = [avSession assetDownloadTaskWithURLAsset:assetDownloadTask.URLAsset
+                                                                      assetTitle:@"Video Download"
+                                                                assetArtworkData:nil
+                                                                         options:downloadOptions];
+        if (nextTask == nil) {
+          return;
+        } else {
+          NSLog(@"Starting download of %@", option);
+          [nextTask resume];
+        }
       }
     }
-  }
+  });
 }
 
 @end
+
 
 
 

@@ -106,7 +106,8 @@
     NSString *path = url.path;
     AVAssetDownloadTask *existingTask = [tasks objectForKey:cacheKey];
     NSLog(@"Task duration %f", CMTimeGetSeconds(existingTask.URLAsset.duration));
-    if(existingTask && CMTimeGetSeconds(existingTask.URLAsset.duration) > 0) {
+    //if(existingTask && CMTimeGetSeconds(existingTask.URLAsset.duration) > 0) {
+    if(existingTask) {
       return existingTask.URLAsset;
     }
     NSData *bookmarkData = [[NSUserDefaults standardUserDefaults] objectForKey:cacheKey];

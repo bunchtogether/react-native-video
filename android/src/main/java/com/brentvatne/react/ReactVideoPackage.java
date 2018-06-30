@@ -15,7 +15,7 @@ public class ReactVideoPackage implements ReactPackage {
 
     @Override
     public List<NativeModule> createNativeModules(ReactApplicationContext reactContext) {
-        return Collections.emptyList();
+        return Arrays.<NativeModule>asList(new ReactVideoModule(reactContext));
     }
 
     // Deprecated RN 0.47

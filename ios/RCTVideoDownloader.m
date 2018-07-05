@@ -167,7 +167,6 @@
         cacheKey:(NSString *)cacheKey
          resolve:(RCTPromiseResolveBlock)resolve
           reject:(RCTPromiseRejectBlock)reject {
-  //resolve(@{@"success":@YES});
 #if !(TARGET_IPHONE_SIMULATOR)
   NSURL *url = [NSURL URLWithString:uri];
   [self getAsset:url cacheKey:cacheKey];
@@ -212,12 +211,12 @@
     AVAssetCache* assetCache = asset.assetCache;
     if (!assetCache) {
       NSLog(@"No asset cache for %@ %@", path, cacheKey);
-      RCTPromiseResolveBlock reject = [rejects objectForKey:cacheKey];
+      RCTPromiseRejectBlock reject = [rejects objectForKey:cacheKey];
       if(reject) {
         [resolves removeObjectForKey:cacheKey];
         [rejects removeObjectForKey:cacheKey];
         [tasks removeObjectForKey:cacheKey];
-        reject(@{@"error":@"No assset cache"});
+        reject(@"precache_error", @"No assset cache", nil);
       }
       return;
     }
@@ -228,12 +227,12 @@
                                                        error:&error];
     if(error) {
       NSLog(@"Bookmark error for asset %@ with key %@", path, cacheKey);
-      RCTPromiseResolveBlock reject = [rejects objectForKey:cacheKey];
+      RCTPromiseRejectBlock reject = [rejects objectForKey:cacheKey];
       if(reject) {
         [resolves removeObjectForKey:cacheKey];
         [rejects removeObjectForKey:cacheKey];
         [tasks removeObjectForKey:cacheKey];
-        reject(@{@"error":@"Bookmark error"});
+        reject(@"precache_error", @"Bookmark error", nil);
       }
       return;
     }

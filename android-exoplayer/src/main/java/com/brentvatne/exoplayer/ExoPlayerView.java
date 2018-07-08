@@ -16,15 +16,19 @@ import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.ExoPlaybackException;
 import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.PlaybackParameters;
+import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.SimpleExoPlayer;
 import com.google.android.exoplayer2.Timeline;
 import com.google.android.exoplayer2.metadata.Metadata;
+import com.google.android.exoplayer2.metadata.MetadataOutput;
 import com.google.android.exoplayer2.metadata.MetadataRenderer;
 import com.google.android.exoplayer2.source.TrackGroupArray;
 import com.google.android.exoplayer2.text.Cue;
+import com.google.android.exoplayer2.text.TextOutput;
 import com.google.android.exoplayer2.text.TextRenderer;
 import com.google.android.exoplayer2.trackselection.TrackSelectionArray;
 import com.google.android.exoplayer2.ui.SubtitleView;
+import com.google.android.exoplayer2.video.VideoListener;
 
 import java.util.List;
 
@@ -96,11 +100,10 @@ public final class ExoPlayerView extends FrameLayout {
             return;
         }
         if (this.player != null) {
-            this.player.setTextOutput(null);
-            this.player.setVideoListener(null);
+            this.player.removeTextOutput(componentListener);
+            this.player.removeVideoListener(componentListener);
             this.player.removeListener(componentListener);
             this.player.setVideoSurface(null);
-            this.player.setMetadataOutput(componentListener);
         }
         this.player = player;
         shutterView.setVisibility(VISIBLE);
@@ -110,10 +113,10 @@ public final class ExoPlayerView extends FrameLayout {
             } else if (surfaceView instanceof SurfaceView) {
                 player.setVideoSurfaceView((SurfaceView) surfaceView);
             }
-            player.setVideoListener(componentListener);
+            player.addVideoListener(componentListener);
             player.addListener(componentListener);
-            player.setTextOutput(componentListener);
-            player.setMetadataOutput(componentListener);
+            player.addTextOutput(componentListener);
+            player.addMetadataOutput(componentListener);
         }
     }
 
@@ -166,8 +169,8 @@ public final class ExoPlayerView extends FrameLayout {
         shutterView.setVisibility(VISIBLE);
     }
 
-    private final class ComponentListener implements SimpleExoPlayer.VideoListener,
-            TextRenderer.Output, ExoPlayer.EventListener, MetadataRenderer.Output {
+    private final class ComponentListener implements VideoListener,
+            TextOutput, Player.EventListener, MetadataOutput {
 
         // TextRenderer.Output implementation
 
@@ -207,17 +210,27 @@ public final class ExoPlayerView extends FrameLayout {
         }
 
         @Override
+        public void onRepeatModeChanged(int repeatMode) {
+            // Do nothing.
+        }
+
+        @Override
+        public void onShuffleModeEnabledChanged(boolean shuffleModeEnabled) {
+            // Do nothing.
+        }
+
+        @Override
         public void onPlayerError(ExoPlaybackException e) {
             // Do nothing.
         }
 
         @Override
-        public void onPositionDiscontinuity() {
+        public void onPositionDiscontinuity(int reason) {
             // Do nothing.
         }
 
         @Override
-        public void onTimelineChanged(Timeline timeline, Object manifest) {
+        public void onTimelineChanged(Timeline timeline, Object manifest, int reason) {
             // Do nothing.
         }
 
@@ -228,6 +241,11 @@ public final class ExoPlayerView extends FrameLayout {
 
         @Override
         public void onPlaybackParametersChanged(PlaybackParameters params) {
+            // Do nothing
+        }
+
+        @Override
+        public void onSeekProcessed() {
             // Do nothing
         }
 

@@ -1,10 +1,7 @@
 package com.brentvatne.exoplayer;
 
 import android.content.Context;
-import android.support.annotation.NonNull;
-import android.util.Log;
 
-import com.facebook.react.modules.network.OkHttpClientProvider;
 import com.google.android.exoplayer2.ext.okhttp.OkHttpDataSourceFactory;
 import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DefaultBandwidthMeter;
@@ -12,13 +9,9 @@ import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory;
 import com.google.android.exoplayer2.upstream.HttpDataSource;
 import com.google.android.exoplayer2.util.Util;
 
-import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 
-import okhttp3.Interceptor;
 import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
 
 public class DataSourceUtil {
 
@@ -79,6 +72,7 @@ public class DataSourceUtil {
                     .connectTimeout(0, TimeUnit.MILLISECONDS)
                     .readTimeout(0, TimeUnit.MILLISECONDS)
                     .writeTimeout(0, TimeUnit.MILLISECONDS)
+                    /*
                     .addInterceptor(new Interceptor() {
                         @Override
                         public Response intercept(@NonNull Chain chain) throws IOException {
@@ -87,6 +81,7 @@ public class DataSourceUtil {
                             return chain.proceed(request);
                         }
                     })
+                    */
                     .build();
         }
 

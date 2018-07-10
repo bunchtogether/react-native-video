@@ -94,7 +94,7 @@ class ReactExoplayerView extends FrameLayout implements
 
         @Override
         public void onPlayerStateChanged(boolean playWhenReady, int playbackState) {
-            String text = "onStateChanged: playWhenReady=" + playWhenReady + ", playbackState=";
+            String text = srcUri + ": state changed: playWhenReady=" + playWhenReady + ", playbackState=";
             switch (playbackState) {
                 case Player.STATE_IDLE:
                     text += "idle";
@@ -124,7 +124,7 @@ class ReactExoplayerView extends FrameLayout implements
 
         @Override
         public void onPlayerError(ExoPlaybackException e) {
-            Log.e(TAG, e.toString(), e);
+            Log.e(TAG, "on video at " + srcUri, e);
             String errorString = null;
             Exception ex = e;
             if (e.type == ExoPlaybackException.TYPE_RENDERER) {

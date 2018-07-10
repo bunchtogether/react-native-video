@@ -66,7 +66,7 @@ public class DataSourceUtil {
     }
 
     private static OkHttpClient sClient;
-    private static HttpDataSource.Factory buildHttpDataSourceFactory(Context context, DefaultBandwidthMeter bandwidthMeter) {
+    public static OkHttpClient getOkHttpClient() {
         if (sClient == null) {
             sClient = new OkHttpClient.Builder()
                     .connectTimeout(0, TimeUnit.MILLISECONDS)
@@ -84,8 +84,11 @@ public class DataSourceUtil {
                     */
                     .build();
         }
+        return sClient;
+    }
 
-        return new OkHttpDataSourceFactory(sClient, getUserAgent(context), bandwidthMeter);
+    private static HttpDataSource.Factory buildHttpDataSourceFactory(Context context, DefaultBandwidthMeter bandwidthMeter) {
+        return new OkHttpDataSourceFactory(getOkHttpClient(), getUserAgent(context), bandwidthMeter);
     }
 
 }

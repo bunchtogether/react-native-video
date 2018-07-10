@@ -1,5 +1,6 @@
 package com.brentvatne.react;
 
+import com.brentvatne.exoplayer.ReactExoplayerModule;
 import com.brentvatne.exoplayer.ReactExoplayerViewManager;
 import com.facebook.react.ReactPackage;
 import com.facebook.react.bridge.JavaScriptModule;
@@ -14,7 +15,7 @@ public class ReactVideoPackage implements ReactPackage {
 
     @Override
     public List<NativeModule> createNativeModules(ReactApplicationContext reactContext) {
-        return Collections.emptyList();
+        return Collections.<NativeModule>singletonList(new ReactExoplayerModule(reactContext));
     }
 
     // Deprecated RN 0.47

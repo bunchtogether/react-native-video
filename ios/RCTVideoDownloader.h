@@ -2,9 +2,9 @@
 #import <AVFoundation/AVFoundation.h>
 #import <React/RCTBridge.h>
 
-@class RCTVideoDownloader;
-
 @interface RCTVideoDownloader : NSObject <AVAssetDownloadDelegate>
+
++ (instancetype)sharedVideoDownloader;
 
 - (instancetype)init;
 

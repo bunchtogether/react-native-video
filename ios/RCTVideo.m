@@ -512,6 +512,10 @@ static NSString *const timedMetadata = @"timedMetadata";
         [self attachListeners];
         [self applyModifiers];
       } else if (_playerItem.status == AVPlayerItemStatusFailed && self.onVideoError) {
+        AVPlayerItemErrorLog *errorLog = [_playerItem errorLog];
+        if(errorLog) {
+          NSLog(@"RCTVideo player item error: %@", [[NSString alloc] initWithData:[errorLog extendedLogData] encoding:[errorLog extendedLogDataStringEncoding]]);
+        }
         self.onVideoError(@{@"error": @{@"code": [NSNumber numberWithInteger: _playerItem.error.code],
                                         @"domain": _playerItem.error.domain},
                             @"target": self.reactTag});

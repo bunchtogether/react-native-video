@@ -10,16 +10,9 @@ RCT_EXPORT_MODULE();
 
 @synthesize bridge = _bridge;
 
--(id) init {
-    if ((self = [super init])) {
-        _downloader = [[RCTVideoDownloader alloc] init];
-    }
-    return self;
-}
-
 - (UIView *)view
 {
-    return [[RCTVideo alloc] initWithEventDispatcherAndDownloader:self.bridge.eventDispatcher downloader:_downloader];
+    return [[RCTVideo alloc] initWithEventDispatcherAndDownloader:self.bridge.eventDispatcher];
 }
 
 - (dispatch_queue_t)methodQueue
@@ -32,7 +25,7 @@ RCT_EXPORT_METHOD(prefetch:(NSString *)uri
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 {
-    [_downloader prefetch:uri cacheKey:cacheKey resolve:resolve reject:reject];
+    [[RCTVideoDownloader sharedVideoDownloader] prefetch:uri cacheKey:cacheKey resolve:resolve reject:reject];
 }
 RCT_EXPORT_VIEW_PROPERTY(src, NSDictionary);
 RCT_EXPORT_VIEW_PROPERTY(resizeMode, NSString);

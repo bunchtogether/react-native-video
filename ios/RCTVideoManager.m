@@ -10,16 +10,9 @@ RCT_EXPORT_MODULE();
 
 @synthesize bridge = _bridge;
 
--(id) init {
-    if ((self = [super init])) {
-        _downloader = [[RCTVideoDownloader alloc] init];
-    }
-    return self;
-}
-
 - (UIView *)view
 {
-    return [[RCTVideo alloc] initWithEventDispatcherAndDownloader:self.bridge.eventDispatcher downloader:_downloader];
+    return [[RCTVideo alloc] initWithEventDispatcherAndDownloader:self.bridge.eventDispatcher];
 }
 
 - (dispatch_queue_t)methodQueue
@@ -32,11 +25,15 @@ RCT_EXPORT_METHOD(prefetch:(NSString *)uri
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 {
-    [_downloader prefetch:uri cacheKey:cacheKey resolve:resolve reject:reject];
+    [[RCTVideoDownloader sharedVideoDownloader] prefetch:uri cacheKey:cacheKey resolve:resolve reject:reject];
 }
 RCT_EXPORT_VIEW_PROPERTY(src, NSDictionary);
 RCT_EXPORT_VIEW_PROPERTY(resizeMode, NSString);
 RCT_EXPORT_VIEW_PROPERTY(repeat, BOOL);
+RCT_EXPORT_VIEW_PROPERTY(allowsExternalPlayback, BOOL);
+RCT_EXPORT_VIEW_PROPERTY(textTracks, NSArray);
+RCT_EXPORT_VIEW_PROPERTY(selectedTextTrack, NSDictionary);
+RCT_EXPORT_VIEW_PROPERTY(selectedAudioTrack, NSDictionary);
 RCT_EXPORT_VIEW_PROPERTY(paused, BOOL);
 RCT_EXPORT_VIEW_PROPERTY(muted, BOOL);
 RCT_EXPORT_VIEW_PROPERTY(controls, BOOL);
@@ -45,7 +42,7 @@ RCT_EXPORT_VIEW_PROPERTY(playInBackground, BOOL);
 RCT_EXPORT_VIEW_PROPERTY(playWhenInactive, BOOL);
 RCT_EXPORT_VIEW_PROPERTY(ignoreSilentSwitch, NSString);
 RCT_EXPORT_VIEW_PROPERTY(rate, float);
-RCT_EXPORT_VIEW_PROPERTY(seek, float);
+RCT_EXPORT_VIEW_PROPERTY(seek, NSDictionary);
 RCT_EXPORT_VIEW_PROPERTY(currentTime, float);
 RCT_EXPORT_VIEW_PROPERTY(fullscreen, BOOL);
 RCT_EXPORT_VIEW_PROPERTY(progressUpdateInterval, float);
@@ -58,6 +55,7 @@ RCT_EXPORT_VIEW_PROPERTY(onVideoProgress, RCTBubblingEventBlock);
 RCT_EXPORT_VIEW_PROPERTY(onVideoSeek, RCTBubblingEventBlock);
 RCT_EXPORT_VIEW_PROPERTY(onVideoEnd, RCTBubblingEventBlock);
 RCT_EXPORT_VIEW_PROPERTY(onTimedMetadata, RCTBubblingEventBlock);
+RCT_EXPORT_VIEW_PROPERTY(onVideoAudioBecomingNoisy, RCTBubblingEventBlock);
 RCT_EXPORT_VIEW_PROPERTY(onVideoFullscreenPlayerWillPresent, RCTBubblingEventBlock);
 RCT_EXPORT_VIEW_PROPERTY(onVideoFullscreenPlayerDidPresent, RCTBubblingEventBlock);
 RCT_EXPORT_VIEW_PROPERTY(onVideoFullscreenPlayerWillDismiss, RCTBubblingEventBlock);
@@ -75,6 +73,11 @@ RCT_EXPORT_VIEW_PROPERTY(onPlaybackRateChange, RCTBubblingEventBlock);
     @"ScaleAspectFit": AVLayerVideoGravityResizeAspect,
     @"ScaleAspectFill": AVLayerVideoGravityResizeAspectFill
   };
+}
+
++ (BOOL)requiresMainQueueSetup
+{
+    return YES;
 }
 
 @end

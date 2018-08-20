@@ -1,6 +1,7 @@
 #import <React/RCTConvert.h>
 #import "RCTVideo.h"
 #import <React/RCTBridgeModule.h>
+#import <React/RCTLog.h>
 #import <React/RCTEventDispatcher.h>
 #import <React/UIView+React.h>
 #import "RCTVideoDownloader.h"
@@ -26,6 +27,7 @@ static int const RCTVideoUnset = -1;
   BOOL _playerLayerObserverSet;
   AVPlayerViewController *_playerViewController;
   NSURL *_videoURL;
+  dispatch_queue_t _queue;
 
   /* Required to publish events */
   RCTEventDispatcher *_eventDispatcher;
@@ -80,7 +82,8 @@ static int const RCTVideoUnset = -1;
     _allowsExternalPlayback = YES;
     _playWhenInactive = false;
     _ignoreSilentSwitch = @"inherit"; // inherit, ignore, obey
-
+    _queue = dispatch_queue_create("RCTVideo Queue", DISPATCH_QUEUE_SERIAL);
+    
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(applicationWillResignActive:)
                                                  name:UIApplicationWillResignActiveNotification
@@ -311,40 +314,131 @@ static int const RCTVideoUnset = -1;
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
 
     // perform on next run loop, otherwise other passed react-props may not be set
-    _playerItem = [self playerItemForSource:source];
-    [self addPlayerItemObservers];
 
+    bool isNetwork = [RCTConvert BOOL:[source objectForKey:@"isNetwork"]];
+    bool isAsset = [RCTConvert BOOL:[source objectForKey:@"isAsset"]];
+    NSString *uri = [source objectForKey:@"uri"];
+    NSString *type = [source objectForKey:@"type"];
+    
+    AVURLAsset *asset;
+    NSMutableDictionary *assetOptions = [[NSMutableDictionary alloc] init];
+    
+    if (isNetwork) {
+      NSString *cacheKey = [source objectForKey:@"cacheKey"];
+      NSString *ck = cacheKey ? cacheKey : uri;
+      asset = [[RCTVideoDownloader sharedVideoDownloader] getAsset:[NSURL URLWithString:uri] cacheKey:ck];
+    } else if (isAsset) { //  assets on iOS can be in the Bundle or Documents folder
+      asset = [AVURLAsset URLAssetWithURL:[self urlFilePath:uri] options:nil];
+    } else { // file passed in through JS, or an asset in the Xcode project
+      asset = [AVURLAsset URLAssetWithURL:[[NSURL alloc] initFileURLWithPath:[[NSBundle mainBundle] pathForResource:uri ofType:type]] options:nil];
+    }
+    [asset loadValuesAsynchronouslyForKeys:@[@"duration"] completionHandler:^{
+      NSError *error = nil;
+      AVKeyValueStatus status = [asset statusOfValueForKey:@"duration" error:&error];
+      switch (status) {
+        case AVKeyValueStatusLoaded:
+          [self setupPlayer:asset source:source options:assetOptions];
+          break;
+        case AVKeyValueStatusFailed:
+          self.onVideoError(@{@"error": @{@"code": [NSNumber numberWithInteger: error.code],
+                                          @"domain": error.domain},
+                              @"target": self.reactTag});
+          break;
+        case AVKeyValueStatusCancelled:
+          self.onVideoError(@{@"error": @{@"code": @(-1),
+                                          @"domain": @"AV_KEY_VALUE_STATUS_CANCELLED"},
+                              @"target": self.reactTag});
+          break;
+        default:
+          self.onVideoError(@{@"error": @{@"code": @(-1),
+                                          @"domain": @"UNKNOWN_DURATION_STATUS"},
+                              @"target": self.reactTag});
+          break;
+      }
+    }];
+  });
+  _videoLoadStarted = YES;
+}
+
+- (void)setupPlayer:(AVURLAsset *)asset source:(NSDictionary *)source options:(NSMutableDictionary *)assetOptions {
+  dispatch_async(_queue, ^{
+    if (_textTracks) {
+      // sideload text tracks
+      AVMutableComposition *mixComposition = [[AVMutableComposition alloc] init];
+      
+      AVAssetTrack *videoAsset = [asset tracksWithMediaType:AVMediaTypeVideo].firstObject;
+      AVMutableCompositionTrack *videoCompTrack = [mixComposition addMutableTrackWithMediaType:AVMediaTypeVideo preferredTrackID:kCMPersistentTrackID_Invalid];
+      [videoCompTrack insertTimeRange:CMTimeRangeMake(kCMTimeZero, videoAsset.timeRange.duration)
+                              ofTrack:videoAsset
+                               atTime:kCMTimeZero
+                                error:nil];
+      
+      AVAssetTrack *audioAsset = [asset tracksWithMediaType:AVMediaTypeAudio].firstObject;
+      AVMutableCompositionTrack *audioCompTrack = [mixComposition addMutableTrackWithMediaType:AVMediaTypeAudio preferredTrackID:kCMPersistentTrackID_Invalid];
+      [audioCompTrack insertTimeRange:CMTimeRangeMake(kCMTimeZero, videoAsset.timeRange.duration)
+                              ofTrack:audioAsset
+                               atTime:kCMTimeZero
+                                error:nil];
+      
+      NSMutableArray* validTextTracks = [NSMutableArray array];
+      for (int i = 0; i < _textTracks.count; ++i) {
+        AVURLAsset *textURLAsset;
+        NSString *textUri = [_textTracks objectAtIndex:i][@"uri"];
+        if ([[textUri lowercaseString] hasPrefix:@"http"]) {
+          textURLAsset = [AVURLAsset URLAssetWithURL:[NSURL URLWithString:textUri] options:assetOptions];
+        } else {
+          textURLAsset = [AVURLAsset URLAssetWithURL:[self urlFilePath:textUri] options:nil];
+        }
+        AVAssetTrack *textTrackAsset = [textURLAsset tracksWithMediaType:AVMediaTypeText].firstObject;
+        if (!textTrackAsset) continue; // fix when there's no textTrackAsset
+        [validTextTracks addObject:[_textTracks objectAtIndex:i]];
+        AVMutableCompositionTrack *textCompTrack = [mixComposition
+                                                    addMutableTrackWithMediaType:AVMediaTypeText
+                                                    preferredTrackID:kCMPersistentTrackID_Invalid];
+        [textCompTrack insertTimeRange:CMTimeRangeMake(kCMTimeZero, videoAsset.timeRange.duration)
+                               ofTrack:textTrackAsset
+                                atTime:kCMTimeZero
+                                 error:nil];
+      }
+      if (validTextTracks.count != _textTracks.count) {
+        [self setTextTracks:validTextTracks];
+      }
+      _playerItem = [AVPlayerItem playerItemWithAsset:mixComposition];
+    } else {
+      _playerItem = [AVPlayerItem playerItemWithAsset:asset];
+    }
+    
+    [self addPlayerItemObservers];
+    
     [_player pause];
     [_playerViewController.view removeFromSuperview];
     _playerViewController = nil;
-
+    
     if (_playbackRateObserverRegistered) {
       [_player removeObserver:self forKeyPath:playbackRate context:nil];
       _playbackRateObserverRegistered = NO;
     }
-
+    
     _player = [AVPlayer playerWithPlayerItem:_playerItem];
     _player.actionAtItemEnd = AVPlayerActionAtItemEndNone;
-
+    
     [_player addObserver:self forKeyPath:playbackRate options:0 context:nil];
     _playbackRateObserverRegistered = YES;
-
+    
     [self addPlayerTimeObserver];
-
+    
     //Perform on next run loop, otherwise onVideoLoadStart is nil
     if(self.onVideoLoadStart) {
       id uri = [source objectForKey:@"uri"];
       id type = [source objectForKey:@"type"];
       self.onVideoLoadStart(@{@"src": @{
-                                        @"uri": uri ? uri : [NSNull null],
-                                        @"type": type ? type : [NSNull null],
-                                        @"isNetwork": [NSNumber numberWithBool:(bool)[source objectForKey:@"isNetwork"]]},
-                                        @"target": self.reactTag
-                                        });
+                                  @"uri": uri ? uri : [NSNull null],
+                                  @"type": type ? type : [NSNull null],
+                                  @"isNetwork": [NSNumber numberWithBool:(bool)[source objectForKey:@"isNetwork"]]},
+                                  @"target": self.reactTag
+                              });
     }
-
   });
-  _videoLoadStarted = YES;
 }
 
 - (NSURL*) urlFilePath:(NSString*) filepath {
@@ -366,84 +460,6 @@ static int const RCTVideoUnset = -1;
     return [NSURL fileURLWithPath:path];
   }
   return nil;
-}
-
-- (AVPlayerItem*)playerItemForSource:(NSDictionary *)source
-{
-  bool isNetwork = [RCTConvert BOOL:[source objectForKey:@"isNetwork"]];
-  bool isAsset = [RCTConvert BOOL:[source objectForKey:@"isAsset"]];
-  NSString *uri = [source objectForKey:@"uri"];
-  NSString *type = [source objectForKey:@"type"];
-  
-  AVURLAsset *asset;
-  NSMutableDictionary *assetOptions = [[NSMutableDictionary alloc] init];
-
-  if (isNetwork) {
-    /* Per #1091, this is not a public API. We need to either get approval from Apple to use this
-     * or use a different approach.
-    NSDictionary *headers = [source objectForKey:@"requestHeaders"];
-    if ([headers count] > 0) {
-      [assetOptions setObject:headers forKey:@"AVURLAssetHTTPHeaderFieldsKey"];
-    }
-    */
-    NSString *cacheKey = [source objectForKey:@"cacheKey"];
-    NSString *ck = cacheKey ? cacheKey : uri;
-    asset = [[RCTVideoDownloader sharedVideoDownloader] getAsset:[NSURL URLWithString:uri] cacheKey:ck];
-    //NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
-    //[assetOptions setObject:cookies forKey:AVURLAssetHTTPCookiesKey];
-    //asset = [AVURLAsset URLAssetWithURL:[NSURL URLWithString:uri] options:assetOptions];
-  } else if (isAsset) { //  assets on iOS can be in the Bundle or Documents folder
-    asset = [AVURLAsset URLAssetWithURL:[self urlFilePath:uri] options:nil];
-  } else { // file passed in through JS, or an asset in the Xcode project
-    asset = [AVURLAsset URLAssetWithURL:[[NSURL alloc] initFileURLWithPath:[[NSBundle mainBundle] pathForResource:uri ofType:type]] options:nil];
-  }
-  
-  if (!_textTracks) {
-    return [AVPlayerItem playerItemWithAsset:asset];
-  }
-  
-  // sideload text tracks
-  AVMutableComposition *mixComposition = [[AVMutableComposition alloc] init];
-  
-  AVAssetTrack *videoAsset = [asset tracksWithMediaType:AVMediaTypeVideo].firstObject;
-  AVMutableCompositionTrack *videoCompTrack = [mixComposition addMutableTrackWithMediaType:AVMediaTypeVideo preferredTrackID:kCMPersistentTrackID_Invalid];
-  [videoCompTrack insertTimeRange:CMTimeRangeMake(kCMTimeZero, videoAsset.timeRange.duration)
-                          ofTrack:videoAsset
-                           atTime:kCMTimeZero
-                            error:nil];
-
-  AVAssetTrack *audioAsset = [asset tracksWithMediaType:AVMediaTypeAudio].firstObject;
-  AVMutableCompositionTrack *audioCompTrack = [mixComposition addMutableTrackWithMediaType:AVMediaTypeAudio preferredTrackID:kCMPersistentTrackID_Invalid];
-  [audioCompTrack insertTimeRange:CMTimeRangeMake(kCMTimeZero, videoAsset.timeRange.duration)
-                          ofTrack:audioAsset
-                           atTime:kCMTimeZero
-                            error:nil];
-
-  NSMutableArray* validTextTracks = [NSMutableArray array];
-  for (int i = 0; i < _textTracks.count; ++i) {
-    AVURLAsset *textURLAsset;
-    NSString *textUri = [_textTracks objectAtIndex:i][@"uri"];
-    if ([[textUri lowercaseString] hasPrefix:@"http"]) {
-      textURLAsset = [AVURLAsset URLAssetWithURL:[NSURL URLWithString:textUri] options:assetOptions];
-    } else {
-      textURLAsset = [AVURLAsset URLAssetWithURL:[self urlFilePath:textUri] options:nil];
-    }
-    AVAssetTrack *textTrackAsset = [textURLAsset tracksWithMediaType:AVMediaTypeText].firstObject;
-    if (!textTrackAsset) continue; // fix when there's no textTrackAsset
-    [validTextTracks addObject:[_textTracks objectAtIndex:i]];
-    AVMutableCompositionTrack *textCompTrack = [mixComposition
-                                                addMutableTrackWithMediaType:AVMediaTypeText
-                                                preferredTrackID:kCMPersistentTrackID_Invalid];
-    [textCompTrack insertTimeRange:CMTimeRangeMake(kCMTimeZero, videoAsset.timeRange.duration)
-                               ofTrack:textTrackAsset
-                                atTime:kCMTimeZero
-                                 error:nil];
-  }
-  if (validTextTracks.count != _textTracks.count) {
-    [self setTextTracks:validTextTracks];
-  }
-
-  return [AVPlayerItem playerItemWithAsset:mixComposition];
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context

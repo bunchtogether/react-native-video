@@ -118,7 +118,7 @@
   NSString *path = url.path;
   @synchronized(self) {
     AVAssetDownloadTask *existingTask = [self.tasks objectForKey:cacheKey];
-    if(existingTask && CMTimeGetSeconds(existingTask.URLAsset.duration) > 0) {
+    if(existingTask) {
       NSLog(@"Found existing task for asset %@ with key %@", path, cacheKey);
       return existingTask.URLAsset;
     }
@@ -170,6 +170,7 @@
                                                                  assetTitle:@"Video Download"
                                                            assetArtworkData:nil
                                                                     options:nil];
+  
   task.taskDescription = cacheKey;
   @synchronized(self) {
     self.tasks[cacheKey] = task;

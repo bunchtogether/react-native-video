@@ -14,6 +14,8 @@ static NSString *const readyForDisplayKeyPath = @"readyForDisplay";
 static NSString *const playbackRate = @"rate";
 static NSString *const timedMetadata = @"timedMetadata";
 
+static int const RCTVideoUnset = -1;
+
 @implementation RCTVideo
 {
   AVPlayer *_player;
@@ -307,26 +309,26 @@ static NSString *const timedMetadata = @"timedMetadata";
   [self removePlayerTimeObserver];
   [self removePlayerItemObservers];
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-    
+
     // perform on next run loop, otherwise other passed react-props may not be set
     _playerItem = [self playerItemForSource:source];
     [self addPlayerItemObservers];
-    
+
     [_player pause];
     [_playerViewController.view removeFromSuperview];
     _playerViewController = nil;
-    
+
     if (_playbackRateObserverRegistered) {
       [_player removeObserver:self forKeyPath:playbackRate context:nil];
       _playbackRateObserverRegistered = NO;
     }
-    
+
     _player = [AVPlayer playerWithPlayerItem:_playerItem];
     _player.actionAtItemEnd = AVPlayerActionAtItemEndNone;
-    
+
     [_player addObserver:self forKeyPath:playbackRate options:0 context:nil];
     _playbackRateObserverRegistered = YES;
-    
+
     [self addPlayerTimeObserver];
 
     //Perform on next run loop, otherwise onVideoLoadStart is nil
@@ -346,8 +348,12 @@ static NSString *const timedMetadata = @"timedMetadata";
 }
 
 - (NSURL*) urlFilePath:(NSString*) filepath {
-  NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+  if ([filepath containsString:@"file://"]) {
+    return [NSURL URLWithString:filepath];
+  }
   
+  // code to support local caching
+  NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
   NSString* relativeFilePath = [filepath lastPathComponent];
   // the file may be multiple levels below the documents directory
   NSArray* fileComponents = [filepath componentsSeparatedByString:@"Documents/"];
@@ -386,7 +392,7 @@ static NSString *const timedMetadata = @"timedMetadata";
     //NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
     //[assetOptions setObject:cookies forKey:AVURLAssetHTTPCookiesKey];
     //asset = [AVURLAsset URLAssetWithURL:[NSURL URLWithString:uri] options:assetOptions];
-  } else if (isAsset) { //  assets on iOS have to be in the Documents folder
+  } else if (isAsset) { //  assets on iOS can be in the Bundle or Documents folder
     asset = [AVURLAsset URLAssetWithURL:[self urlFilePath:uri] options:nil];
   } else { // file passed in through JS, or an asset in the Xcode project
     asset = [AVURLAsset URLAssetWithURL:[[NSURL alloc] initFileURLWithPath:[[NSBundle mainBundle] pathForResource:uri ofType:type]] options:nil];
@@ -413,6 +419,7 @@ static NSString *const timedMetadata = @"timedMetadata";
                            atTime:kCMTimeZero
                             error:nil];
 
+  NSMutableArray* validTextTracks = [NSMutableArray array];
   for (int i = 0; i < _textTracks.count; ++i) {
     AVURLAsset *textURLAsset;
     NSString *textUri = [_textTracks objectAtIndex:i][@"uri"];
@@ -422,6 +429,8 @@ static NSString *const timedMetadata = @"timedMetadata";
       textURLAsset = [AVURLAsset URLAssetWithURL:[self urlFilePath:textUri] options:nil];
     }
     AVAssetTrack *textTrackAsset = [textURLAsset tracksWithMediaType:AVMediaTypeText].firstObject;
+    if (!textTrackAsset) continue; // fix when there's no textTrackAsset
+    [validTextTracks addObject:[_textTracks objectAtIndex:i]];
     AVMutableCompositionTrack *textCompTrack = [mixComposition
                                                 addMutableTrackWithMediaType:AVMediaTypeText
                                                 preferredTrackID:kCMPersistentTrackID_Invalid];
@@ -429,6 +438,9 @@ static NSString *const timedMetadata = @"timedMetadata";
                                ofTrack:textTrackAsset
                                 atTime:kCMTimeZero
                                  error:nil];
+  }
+  if (validTextTracks.count != _textTracks.count) {
+    [self setTextTracks:validTextTracks];
   }
 
   return [AVPlayerItem playerItemWithAsset:mixComposition];
@@ -815,7 +827,7 @@ static NSString *const timedMetadata = @"timedMetadata";
 
 - (void) setSideloadedText {
   NSString *type = _selectedTextTrack[@"type"];
-  NSArray* textTracks = [self getTextTrackInfo];
+  NSArray *textTracks = [self getTextTrackInfo];
   
   // The first few tracks will be audio & video track
   int firstTextIndex = 0;
@@ -825,7 +837,7 @@ static NSString *const timedMetadata = @"timedMetadata";
     }
   }
   
-  int selectedTrackIndex = -1;
+  int selectedTrackIndex = RCTVideoUnset;
   
   if ([type isEqualToString:@"disabled"]) {
     // Do nothing. We want to ensure option is nil
@@ -856,27 +868,28 @@ static NSString *const timedMetadata = @"timedMetadata";
     }
   }
   
-  // user's selected language might not be available, or system defaults have captions enabled
-  if (selectedTrackIndex == -1 || [type isEqualToString:@"default"]) {
-      CFArrayRef captioningMediaCharacteristics = MACaptionAppearanceCopyPreferredCaptioningMediaCharacteristics(kMACaptionAppearanceDomainUser);
-      NSArray *captionSettings = (__bridge NSArray*)captioningMediaCharacteristics;
-      if ([captionSettings containsObject: AVMediaCharacteristicTranscribesSpokenDialogForAccessibility]) {
-        // iterate through the textTracks to find a matching option, or default to the first object.
-        selectedTrackIndex = 0;
-        
-        NSString * systemLanguage = [[NSLocale preferredLanguages] firstObject];
-        for (int i = 0; i < textTracks.count; ++i) {
-          NSDictionary *currentTextTrack = [textTracks objectAtIndex:i];
-          if ([systemLanguage isEqualToString:currentTextTrack[@"language"]]) {
-            selectedTrackIndex = i;
-            break;
-          }
+  // in the situation that a selected text track is not available (eg. specifies a textTrack not available)
+  if (![type isEqualToString:@"disabled"] && selectedTrackIndex == RCTVideoUnset) {
+    CFArrayRef captioningMediaCharacteristics = MACaptionAppearanceCopyPreferredCaptioningMediaCharacteristics(kMACaptionAppearanceDomainUser);
+    NSArray *captionSettings = (__bridge NSArray*)captioningMediaCharacteristics;
+    if ([captionSettings containsObject:AVMediaCharacteristicTranscribesSpokenDialogForAccessibility]) {
+      selectedTrackIndex = 0; // If we can't find a match, use the first available track
+      NSString *systemLanguage = [[NSLocale preferredLanguages] firstObject];
+      for (int i = 0; i < textTracks.count; ++i) {
+        NSDictionary *currentTextTrack = [textTracks objectAtIndex:i];
+        if ([systemLanguage isEqualToString:currentTextTrack[@"language"]]) {
+          selectedTrackIndex = i;
+          break;
         }
       }
+    }
   }
-  
+    
   for (int i = firstTextIndex; i < _player.currentItem.tracks.count; ++i) {
-    BOOL isEnabled = i == selectedTrackIndex + firstTextIndex;
+    BOOL isEnabled = NO;
+    if (selectedTrackIndex != RCTVideoUnset) {
+      isEnabled = i == selectedTrackIndex + firstTextIndex;
+    }
     [_player.currentItem.tracks[i] setEnabled:isEnabled];
   }
 }

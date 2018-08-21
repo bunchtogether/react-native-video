@@ -205,6 +205,7 @@
   if(asset) {
     [self checkAsset:asset completion:^(AVURLAsset *asset, NSError *error){
       if(error) {
+        NSLog(@"Retrying, error for existing task with path %@ and key %@ - %@", path, cacheKey, error.localizedDescription);
         asset = [self getNewAsset:url path:path cacheKey:cacheKey];
         [self checkAsset:asset completion:completion];
       } else {
@@ -217,6 +218,7 @@
   if(asset) {
     [self checkAsset:asset completion:^(AVURLAsset *asset, NSError *error){
       if(error) {
+        NSLog(@"Retrying, error for bookmarked asset with path %@ and key %@ - %@", path, cacheKey, error.localizedDescription);
         [[NSUserDefaults standardUserDefaults] removeObjectForKey:cacheKey];
         asset = [self getNewAsset:url path:path cacheKey:cacheKey];
         [self checkAsset:asset completion:completion];
@@ -295,7 +297,6 @@
   }
   NSLog(@"Download saved for asset %@ with key %@", path, cacheKey);
   [[NSUserDefaults standardUserDefaults] setObject:bookmarkData forKey:cacheKey];
-  [[NSUserDefaults standardUserDefaults] synchronize];
 }
 
 - (void)URLSession:(NSURLSession *)session assetDownloadTask:(AVAssetDownloadTask *)assetDownloadTask didResolveMediaSelection:(AVMediaSelection *)resolvedMediaSelection {
@@ -316,6 +317,7 @@
     NSLog(@"Download error %ld, %@ for asset %@ with key %@: %@", [error code], [error localizedDescription], path, cacheKey, error);
     @synchronized(self) {
       [self.tasks removeObjectForKey:cacheKey];
+      [[NSUserDefaults standardUserDefaults] removeObjectForKey:cacheKey];
     }
     return;
   }

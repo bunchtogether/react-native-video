@@ -13,7 +13,7 @@
          resolve:(RCTPromiseResolveBlock)resolve
          reject:(RCTPromiseRejectBlock)reject;
 
-- (AVURLAsset *)getAsset:(NSURL *)url cacheKey:(NSString *)cacheKey;
+- (void)getAsset:(NSURL *)url cacheKey:(NSString *)cacheKey completion:(void (^)(AVURLAsset *asset, NSError *))completion;
 - (BOOL)hasCachedAsset:(NSString *)cacheKey;
 - (void)clearCachedAsset:(NSString *)cacheKey;
 

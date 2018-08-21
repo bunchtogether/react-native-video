@@ -306,6 +306,8 @@ static int const RCTVideoUnset = -1;
 
 #pragma mark - Player and source
 
+typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
+
 - (void)setSrc:(NSDictionary *)source
 {
   [self removePlayerLayer];
@@ -320,42 +322,30 @@ static int const RCTVideoUnset = -1;
     NSString *uri = [source objectForKey:@"uri"];
     NSString *type = [source objectForKey:@"type"];
     
-    AVURLAsset *asset;
     NSMutableDictionary *assetOptions = [[NSMutableDictionary alloc] init];
-    
     if (isNetwork) {
       NSString *cacheKey = [source objectForKey:@"cacheKey"];
       NSString *ck = cacheKey ? cacheKey : uri;
-      asset = [[RCTVideoDownloader sharedVideoDownloader] getAsset:[NSURL URLWithString:uri] cacheKey:ck];
-    } else if (isAsset) { //  assets on iOS can be in the Bundle or Documents folder
-      asset = [AVURLAsset URLAssetWithURL:[self urlFilePath:uri] options:nil];
-    } else { // file passed in through JS, or an asset in the Xcode project
-      asset = [AVURLAsset URLAssetWithURL:[[NSURL alloc] initFileURLWithPath:[[NSBundle mainBundle] pathForResource:uri ofType:type]] options:nil];
-    }
-    [asset loadValuesAsynchronouslyForKeys:@[@"duration"] completionHandler:^{
-      NSError *error = nil;
-      AVKeyValueStatus status = [asset statusOfValueForKey:@"duration" error:&error];
-      switch (status) {
-        case AVKeyValueStatusLoaded:
-          [self setupPlayer:asset source:source options:assetOptions];
-          break;
-        case AVKeyValueStatusFailed:
-          self.onVideoError(@{@"error": @{@"code": [NSNumber numberWithInteger: error.code],
+      [[RCTVideoDownloader sharedVideoDownloader] getAsset:[NSURL URLWithString:uri] cacheKey:ck completion:^(AVURLAsset *asset, NSError *error){
+        if(error) {
+          self.onVideoError(@{@"error": @{@"code": [NSNumber numberWithInteger: _playerItem.error.code],
                                           @"domain": error.domain},
                               @"target": self.reactTag});
-          break;
-        case AVKeyValueStatusCancelled:
+          _videoLoadStarted = NO;
+        } else if(asset) {
+          [self setupPlayer:asset source:source options:assetOptions];
+        } else {
           self.onVideoError(@{@"error": @{@"code": @(-1),
-                                          @"domain": @"AV_KEY_VALUE_STATUS_CANCELLED"},
-                              @"target": self.reactTag});
-          break;
-        default:
-          self.onVideoError(@{@"error": @{@"code": @(-1),
-                                          @"domain": @"UNKNOWN_DURATION_STATUS"},
-                              @"target": self.reactTag});
-          break;
-      }
-    }];
+                                        @"domain": @"RCTVideo"},
+                                        @"target": self.reactTag});
+          _videoLoadStarted = NO;
+        }
+      }];
+    } else if (isAsset) { //  assets on iOS can be in the Bundle or Documents folder
+      [self setupPlayer:[AVURLAsset URLAssetWithURL:[self urlFilePath:uri] options:nil] source:source options:assetOptions];
+    } else { // file passed in through JS, or an asset in the Xcode project
+      [self setupPlayer:[AVURLAsset URLAssetWithURL:[[NSURL alloc] initFileURLWithPath:[[NSBundle mainBundle] pathForResource:uri ofType:type]] options:nil] source:source options:assetOptions];
+    }
   });
   _videoLoadStarted = YES;
 }

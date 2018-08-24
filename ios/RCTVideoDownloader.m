@@ -4,6 +4,8 @@
 #import <React/RCTLog.h>
 #import <Security/Security.h>
 #import "RCTVideoDownloader.h"
+#import "QueuedDownloadSession.h"
+#import "BackgroundDownloadAppDelegate.h"
 
 @interface MediaSelections : NSObject
 @property (nonatomic, nullable) AVMediaSelectionGroup* group;
@@ -27,6 +29,9 @@
 
 @property (nonatomic, strong) AVAssetDownloadURLSession *session;
 @property (nonatomic, strong) NSMutableDictionary *mediaSelectionTasks;
+@property (nonatomic, strong) NSOperationQueue *mainOperationQueue;
+@property (nonatomic, strong) NSMutableSet *cacheKeys;
+@property (nonatomic, assign) BOOL suspended;
 
 @end
 
@@ -43,6 +48,10 @@
     config.sessionSendsLaunchEvents = true;
     config.HTTPCookieAcceptPolicy = NSHTTPCookieAcceptPolicyAlways;
     self.session = [AVAssetDownloadURLSession sessionWithConfiguration:config assetDownloadDelegate:self delegateQueue:nil];
+    self.mainOperationQueue = [[NSOperationQueue alloc] init];
+    self.mainOperationQueue.maxConcurrentOperationCount = 1;
+    self.suspended = NO;
+    self.cacheKeys = [[NSMutableSet alloc] init];
   } else {
     NSLog(@"RCTVideoDownloader initialization failed.");
   }
@@ -189,18 +198,15 @@
         cacheKey:(NSString *)cacheKey
          resolve:(RCTPromiseResolveBlock)resolve
           reject:(RCTPromiseRejectBlock)reject {
-#if !(TARGET_IPHONE_SIMULATOR)
   NSURL *url = [NSURL URLWithString:uri];
-  [self getAsset:url cacheKey:cacheKey completion:^(AVURLAsset *asset, NSError *error){
-    if(error) {
-      reject(@"RCTVideoDownloader", error.localizedDescription, nil);
-    } else {
-      resolve(@{@"success":@YES});
-    }
-  }];
-#else
+  if([self.cacheKeys containsObject: uri]) {
+    NSLog(@"Redundant cache download skipped for %@", cacheKey);
+  } else {
+    [self.cacheKeys addObject: uri];
+    DownloadSessionOperation *operation = [[DownloadSessionOperation alloc] initWithSession:self.session url:url cacheKey:cacheKey];
+    [self.mainOperationQueue addOperation:operation];
+  }
   resolve(@{@"success":@YES});
-#endif
 }
 
 -(MediaSelections*)nextMediaSelection:(AVURLAsset*)asset {
@@ -265,6 +271,11 @@
     NSLog(@"Missing cache key for asset %@ in didResolveMediaSelection", path);
     return;
   }
+  for(DownloadSessionOperation *operation in self.mainOperationQueue.operations) {
+    if(operation.cacheKey == cacheKey) {
+      [operation completeOperation];
+    }
+  }
   if (error) {
     NSLog(@"Download error %ld, %@ for asset %@ with key %@: %@", [error code], [error localizedDescription], path, cacheKey, error);
     @synchronized(self) {
@@ -299,6 +310,47 @@
       }
     }
   }
+}
+
+- (void)pauseDownloads {
+  if(self.suspended) {
+    return;
+  }
+  NSLog(@"Downloader: pause");
+  self.suspended = YES;
+  self.mainOperationQueue.suspended = YES;
+  for(DownloadSessionOperation *operation in self.mainOperationQueue.operations) {
+    if([operation isExecuting] && !operation.suspended) {
+      [operation suspend];
+    }
+  }
+}
+
+- (void)resumeDownloads {
+  if(!self.suspended) {
+    return;
+  }
+  NSLog(@"Downloader: resume");
+  self.suspended = NO;
+  self.mainOperationQueue.suspended = NO;
+  for(DownloadSessionOperation *operation in self.mainOperationQueue.operations) {
+    if([operation isExecuting] && operation.suspended) {
+      [operation resume];
+    }
+  }
+}
+
+- (void)URLSessionDidFinishEventsForBackgroundURLSession:(NSURLSession *)session
+{
+  dispatch_async(dispatch_get_main_queue(), ^{
+    BackgroundDownloadAppDelegate *appDelegate = (BackgroundDownloadAppDelegate *)[[UIApplication sharedApplication] delegate];
+    if (appDelegate.sessionCompletionHandler) {
+      void (^completionHandler)() = appDelegate.sessionCompletionHandler;
+      appDelegate.sessionCompletionHandler = nil;
+      completionHandler();
+      [self resumeDownloads];
+    }
+  });
 }
 
 @end

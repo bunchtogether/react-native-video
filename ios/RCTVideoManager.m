@@ -15,11 +15,6 @@ RCT_EXPORT_MODULE();
     return [[RCTVideo alloc] initWithEventDispatcherAndDownloader:self.bridge.eventDispatcher];
 }
 
-- (dispatch_queue_t)methodQueue
-{
-    return dispatch_get_main_queue();
-}
-
 RCT_EXPORT_METHOD(prefetch:(NSString *)uri
                   cacheKey:(NSString *)cacheKey
                   resolve:(RCTPromiseResolveBlock)resolve

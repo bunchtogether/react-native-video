@@ -8,5 +8,5 @@
 @interface BackgroundDownloadAppDelegate : UIResponder <UIApplicationDelegate>
 
 @property (strong, nonatomic) UIWindow *window;
-@property (copy) void (^sessionCompletionHandler)();
+@property (nonatomic, strong) NSMutableDictionary *sessionCompletionHandlers;
 @end

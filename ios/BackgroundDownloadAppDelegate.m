@@ -6,10 +6,8 @@
 
 @implementation BackgroundDownloadAppDelegate
 
-- (void)application:(UIApplication *)application handleEventsForBackgroundURLSession:(NSString *)identifier
-  completionHandler:(void (^)())completionHandler
-{
-    self.sessionCompletionHandler = completionHandler;
+- (void)application:(UIApplication *)application handleEventsForBackgroundURLSession:(NSString *)identifier completionHandler:(void (^)())completionHandler {
+    [self.sessionCompletionHandlers setObject:completionHandler forKey:identifier];
 }
 
 @end

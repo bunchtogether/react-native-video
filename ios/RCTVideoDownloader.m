@@ -32,6 +32,7 @@
 @property (nonatomic, strong) NSOperationQueue *mainOperationQueue;
 @property (nonatomic, strong) NSMutableSet *cacheKeys;
 @property (nonatomic, assign) BOOL suspended;
+@property (nonatomic, strong) dispatch_queue_t queue;
 
 @end
 
@@ -42,16 +43,18 @@
   self = [super init];
   if (self) {
     self.mediaSelectionTasks = [[NSMutableDictionary alloc] init];
-    NSURLSessionConfiguration *config = [NSURLSessionConfiguration backgroundSessionConfigurationWithIdentifier:@"downloadedMedia"];
-    config.networkServiceType = NSURLNetworkServiceTypeVideo;
-    config.allowsCellularAccess = true;
-    config.sessionSendsLaunchEvents = true;
-    config.HTTPCookieAcceptPolicy = NSHTTPCookieAcceptPolicyAlways;
-    self.session = [AVAssetDownloadURLSession sessionWithConfiguration:config assetDownloadDelegate:self delegateQueue:nil];
+    NSURLSessionConfiguration *sessionConfig = [NSURLSessionConfiguration backgroundSessionConfigurationWithIdentifier:@"ReactNativeVideoDownloader"];
+    sessionConfig.networkServiceType = NSURLNetworkServiceTypeVideo;
+    sessionConfig.allowsCellularAccess = true;
+    sessionConfig.sessionSendsLaunchEvents = true;
+    sessionConfig.HTTPCookieAcceptPolicy = NSHTTPCookieAcceptPolicyAlways;
+    self.session = [AVAssetDownloadURLSession sessionWithConfiguration:sessionConfig assetDownloadDelegate:self delegateQueue:nil];
+    self.session.sessionDescription = @"ReactNativeVideoDownloader";
     self.mainOperationQueue = [[NSOperationQueue alloc] init];
     self.mainOperationQueue.maxConcurrentOperationCount = 1;
     self.suspended = NO;
     self.cacheKeys = [[NSMutableSet alloc] init];
+    self.queue = dispatch_queue_create("Video Downloader Queue", DISPATCH_QUEUE_SERIAL);
   } else {
     NSLog(@"RCTVideoDownloader initialization failed.");
   }
@@ -65,6 +68,16 @@
     sharedVideoDownloader = [[self alloc] init];
   });
   return sharedVideoDownloader;
+}
+
+- (void)invalidate
+{
+  NSLog(@"RCTVideoDownloader invalidate");
+  [[NSNotificationCenter defaultCenter] removeObserver:self];
+  [self.session invalidateAndCancel];
+  [self.mainOperationQueue cancelAllOperations];
+  self.mainOperationQueue = nil;
+  self.session = nil;
 }
 
 - (BOOL)hasCachedAsset:(NSString *)cacheKey {
@@ -154,58 +167,54 @@
   AVURLAsset *asset = [AVURLAsset URLAssetWithURL:url options:@{AVURLAssetHTTPCookiesKey : cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
   asset.resourceLoader.preloadsEligibleContentKeys = YES;
   AVAssetDownloadTask *task = [self.session assetDownloadTaskWithURLAsset:asset
-                                                                 assetTitle:@"Video Download"
-                                                           assetArtworkData:nil
-                                                                    options:nil];
+                                                               assetTitle:@"Video Download"
+                                                         assetArtworkData:nil
+                                                                  options:nil];
   task.taskDescription = cacheKey;
   [task resume];
   return asset;
 }
 
 - (void)getAsset:(NSURL *)url cacheKey:(NSString *)cacheKey completion:(void (^)(AVURLAsset *asset, NSError *))completion {
-  /*
-   NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
-   AVURLAsset *asset = [AVURLAsset URLAssetWithURL:url options:@{AVURLAssetHTTPCookiesKey : cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
-   return asset;
-   */
-  AVURLAsset *asset;
-#if TARGET_IPHONE_SIMULATOR
-  NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
-  asset = [AVURLAsset URLAssetWithURL:url options:@{AVURLAssetHTTPCookiesKey : cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
-  return [self checkAsset:asset completion:completion];
-#else
-  NSString *path = url.path;
-  asset = [self getBookmarkedAsset:path cacheKey:cacheKey];
-  if(asset) {
-    [self checkAsset:asset completion:^(AVURLAsset *asset, NSError *error){
-      if(error) {
-        NSLog(@"Retrying, error for bookmarked asset with path %@ and key %@ - %@", path, cacheKey, error.localizedDescription);
-        [[NSUserDefaults standardUserDefaults] removeObjectForKey:cacheKey];
-        asset = [self getNewAsset:url path:path cacheKey:cacheKey];
-        [self checkAsset:asset completion:completion];
-      } else {
-        completion(asset, nil);
-      }
-    }];
-    return;
-  }
-  asset = [self getNewAsset:url path:path cacheKey:cacheKey];
-  [self checkAsset:asset completion:completion];
-#endif
+  dispatch_async(self.queue, ^{
+    AVURLAsset *asset;
+    NSString *path = url.path;
+    asset = [self getBookmarkedAsset:path cacheKey:cacheKey];
+    if(asset) {
+      [self checkAsset:asset completion:^(AVURLAsset *asset, NSError *error){
+        if(error) {
+          NSLog(@"Retrying, error for bookmarked asset with path %@ and key %@ - %@", path, cacheKey, error.localizedDescription);
+          [[NSUserDefaults standardUserDefaults] removeObjectForKey:cacheKey];
+          asset = [self getNewAsset:url path:path cacheKey:cacheKey];
+          [self checkAsset:asset completion:completion];
+        } else {
+          completion(asset, nil);
+        }
+      }];
+    } else {
+      asset = [self getNewAsset:url path:path cacheKey:cacheKey];
+      [self checkAsset:asset completion:completion];
+    }
+  });
 }
 
 - (void)prefetch:(NSString *)uri
         cacheKey:(NSString *)cacheKey
          resolve:(RCTPromiseResolveBlock)resolve
           reject:(RCTPromiseRejectBlock)reject {
-  NSURL *url = [NSURL URLWithString:uri];
-  if([self.cacheKeys containsObject: uri]) {
-    NSLog(@"Redundant cache download skipped for %@", cacheKey);
-  } else {
-    [self.cacheKeys addObject: uri];
-    DownloadSessionOperation *operation = [[DownloadSessionOperation alloc] initWithSession:self.session url:url cacheKey:cacheKey];
-    [self.mainOperationQueue addOperation:operation];
-  }
+#if !TARGET_IPHONE_SIMULATOR
+  dispatch_async(self.queue, ^{
+    NSURL *url = [NSURL URLWithString:uri];
+    if([self.cacheKeys containsObject: uri]) {
+      NSLog(@"Redundant cache download skipped for %@", cacheKey);
+    } else {
+      [self.cacheKeys addObject: uri];
+      DownloadSessionOperation *operation = [[DownloadSessionOperation alloc] initWithSession:self.session url:url cacheKey:cacheKey];
+      [self.mainOperationQueue addOperation:operation];
+    }
+  });
+  
+#endif
   resolve(@{@"success":@YES});
 }
 
@@ -258,9 +267,7 @@
 }
 
 - (void)URLSession:(NSURLSession *)session assetDownloadTask:(AVAssetDownloadTask *)assetDownloadTask didResolveMediaSelection:(AVMediaSelection *)resolvedMediaSelection {
-  @synchronized(self) {
-    self.mediaSelectionTasks[assetDownloadTask] = resolvedMediaSelection;
-  }
+  self.mediaSelectionTasks[assetDownloadTask] = resolvedMediaSelection;
 }
 
 -(void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
@@ -278,37 +285,35 @@
   }
   if (error) {
     NSLog(@"Download error %ld, %@ for asset %@ with key %@: %@", [error code], [error localizedDescription], path, cacheKey, error);
-    @synchronized(self) {
-      [[NSUserDefaults standardUserDefaults] removeObjectForKey:cacheKey];
-    }
+    [[NSUserDefaults standardUserDefaults] removeObjectForKey:cacheKey];
     return;
   }
   MediaSelections *selections = [self nextMediaSelection:assetDownloadTask.URLAsset];
   if (selections.group != nil) {
-    @synchronized(self) {
-      AVMutableMediaSelection *originalMediaSelection = (AVMutableMediaSelection *)self.mediaSelectionTasks[assetDownloadTask];
-      if (originalMediaSelection == nil) {
+    AVMutableMediaSelection *originalMediaSelection = (AVMutableMediaSelection *)self.mediaSelectionTasks[assetDownloadTask];
+    if (originalMediaSelection == nil) {
+      return;
+    } else {
+      AVMutableMediaSelection *localMediaSelection = (AVMutableMediaSelection *)[originalMediaSelection mutableCopy];
+      AVMediaSelectionOption *option = selections.option;
+      AVMediaSelectionGroup *group = selections.group;
+      if (option && group) {
+        [localMediaSelection selectMediaOption: option inMediaSelectionGroup: group];
+      }
+      NSDictionary* downloadOptions = @{AVAssetDownloadTaskMediaSelectionKey: localMediaSelection};
+      AVAssetDownloadURLSession *assetDownloadURLSession = (AVAssetDownloadURLSession *)session;
+      AVAssetDownloadTask *nextTask = [assetDownloadURLSession assetDownloadTaskWithURLAsset:assetDownloadTask.URLAsset
+                                                                                  assetTitle:@"Video Download"
+                                                                            assetArtworkData:nil
+                                                                                     options:downloadOptions];
+      if (nextTask == nil) {
         return;
       } else {
-        AVMutableMediaSelection *localMediaSelection = (AVMutableMediaSelection *)[originalMediaSelection mutableCopy];
-        AVMediaSelectionOption *option = selections.option;
-        AVMediaSelectionGroup *group = selections.group;
-        if (option && group) {
-          [localMediaSelection selectMediaOption: option inMediaSelectionGroup: group];
-        }
-        NSDictionary* downloadOptions = @{AVAssetDownloadTaskMediaSelectionKey: localMediaSelection};
-        AVAssetDownloadTask *nextTask = [self.session assetDownloadTaskWithURLAsset:assetDownloadTask.URLAsset
-                               assetTitle:@"Video Download"
-                         assetArtworkData:nil
-                                  options:downloadOptions];
-        if (nextTask == nil) {
-          return;
-        } else {
-          NSLog(@"Starting download of %@", option);
-          [nextTask resume];
-        }
+        NSLog(@"Starting download of %@", option);
+        [nextTask resume];
       }
     }
+    
   }
 }
 
@@ -344,9 +349,9 @@
 {
   dispatch_async(dispatch_get_main_queue(), ^{
     BackgroundDownloadAppDelegate *appDelegate = (BackgroundDownloadAppDelegate *)[[UIApplication sharedApplication] delegate];
-    if (appDelegate.sessionCompletionHandler) {
-      void (^completionHandler)() = appDelegate.sessionCompletionHandler;
-      appDelegate.sessionCompletionHandler = nil;
+    if (appDelegate.sessionCompletionHandlers && appDelegate.sessionCompletionHandlers[@"ReactNativeVideoDownloader"]) {
+      void (^completionHandler)() = appDelegate.sessionCompletionHandlers[@"ReactNativeVideoDownloader"];
+      [appDelegate.sessionCompletionHandlers removeObjectForKey:@"ReactNativeVideoDownloader"];
       completionHandler();
       [self resumeDownloads];
     }
@@ -354,6 +359,10 @@
 }
 
 @end
+
+
+
+
 
 
 

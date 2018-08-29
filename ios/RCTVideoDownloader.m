@@ -29,6 +29,7 @@
 
 @property (nonatomic, strong) AVAssetDownloadURLSession *session;
 @property (nonatomic, strong) NSMutableDictionary *mediaSelectionTasks;
+@property (nonatomic, strong) NSMutableDictionary *tasks;
 @property (nonatomic, strong) NSOperationQueue *mainOperationQueue;
 @property (nonatomic, strong) NSMutableSet *cacheKeys;
 @property (nonatomic, assign) BOOL suspended;
@@ -43,11 +44,14 @@
   self = [super init];
   if (self) {
     self.mediaSelectionTasks = [[NSMutableDictionary alloc] init];
+    self.tasks = [[NSMutableDictionary alloc] init];
     NSURLSessionConfiguration *sessionConfig = [NSURLSessionConfiguration backgroundSessionConfigurationWithIdentifier:@"ReactNativeVideoDownloader"];
     sessionConfig.networkServiceType = NSURLNetworkServiceTypeVideo;
     sessionConfig.allowsCellularAccess = true;
     sessionConfig.sessionSendsLaunchEvents = true;
     sessionConfig.HTTPCookieAcceptPolicy = NSHTTPCookieAcceptPolicyAlways;
+    sessionConfig.shouldUseExtendedBackgroundIdleMode = YES;
+    sessionConfig.HTTPShouldUsePipelining = YES;
     self.session = [AVAssetDownloadURLSession sessionWithConfiguration:sessionConfig assetDownloadDelegate:self delegateQueue:nil];
     self.session.sessionDescription = @"ReactNativeVideoDownloader";
     self.mainOperationQueue = [[NSOperationQueue alloc] init];
@@ -155,6 +159,13 @@
       if (assetCache) {
         NSLog(@"Cached hit for asset %@ with key %@", path, cacheKey);
         asset.resourceLoader.preloadsEligibleContentKeys = YES;
+        AVAssetDownloadTask *task = [self.session   assetDownloadTaskWithURLAsset:asset
+                                                                       assetTitle:@"Video Download"
+                                                                 assetArtworkData:nil
+                                                                          options:nil];
+        task.taskDescription = cacheKey;
+        self.tasks[cacheKey] = task;
+        [task resume];
         return asset;
       }
     }
@@ -172,6 +183,8 @@
                                                                   options:nil];
   task.taskDescription = cacheKey;
   [task resume];
+  self.tasks[cacheKey] = task;
+  NSLog(@"Got new asset for path %@ and key %@", path, cacheKey);
   return asset;
 }
 
@@ -179,6 +192,11 @@
   dispatch_async(self.queue, ^{
     AVURLAsset *asset;
     NSString *path = url.path;
+    AVAssetDownloadTask *existingTask = self.tasks[cacheKey];
+    if(existingTask) {
+      completion(existingTask.URLAsset, nil);
+      return;
+    }
     asset = [self getBookmarkedAsset:path cacheKey:cacheKey];
     if(asset) {
       [self checkAsset:asset completion:^(AVURLAsset *asset, NSError *error){
@@ -191,10 +209,10 @@
           completion(asset, nil);
         }
       }];
-    } else {
-      asset = [self getNewAsset:url path:path cacheKey:cacheKey];
-      [self checkAsset:asset completion:completion];
+      return;
     }
+    asset = [self getNewAsset:url path:path cacheKey:cacheKey];
+    completion(asset, nil);
   });
 }
 
@@ -278,6 +296,7 @@
     NSLog(@"Missing cache key for asset %@ in didResolveMediaSelection", path);
     return;
   }
+  [self.tasks removeObjectForKey:cacheKey];
   for(DownloadSessionOperation *operation in self.mainOperationQueue.operations) {
     if(operation.cacheKey == cacheKey) {
       [operation completeOperation];

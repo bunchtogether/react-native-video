@@ -48,7 +48,7 @@
 		31CAFB2D1CADC77F009BCF6F /* RCTVideoPlayerViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RCTVideoPlayerViewController.h; sourceTree = "<group>"; };
 		31CAFB2E1CADC77F009BCF6F /* RCTVideoPlayerViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = RCTVideoPlayerViewController.m; sourceTree = "<group>"; };
 		31CAFB301CAE6B5F009BCF6F /* RCTVideoPlayerViewControllerDelegate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RCTVideoPlayerViewControllerDelegate.h; sourceTree = "<group>"; };
-		641E28441F0EEC8500443AF6 /* libRCTVideo.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libRCTVideo.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		641E28441F0EEC8500443AF6 /* libRCTVideo.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; name = libRCTVideo.a; path = "/Users/johnwehr/Projects/bunch/bunch-native/npm-packages/react-native-video/ios/build/Debug-appletvos/libRCTVideo.a"; sourceTree = "<absolute>"; };
 		723C3CD52097BF5D0092F365 /* RCTVideoDownloader.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RCTVideoDownloader.h; sourceTree = "<group>"; };
 		723C3CD62097BF740092F365 /* RCTVideoDownloader.m */ = {isa = PBXFileReference; indentWidth = 2; lastKnownFileType = sourcecode.c.objc; path = RCTVideoDownloader.m; sourceTree = "<group>"; tabWidth = 2; };
 		726F4CF421306C2B00E1A70D /* QueuedDownloadSession.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QueuedDownloadSession.h; sourceTree = "<group>"; };
@@ -106,7 +106,6 @@
 				31CAFB1F1CADA8CD009BCF6F /* UIView+FindUIViewController.h */,
 				31CAFB201CADA8CD009BCF6F /* UIView+FindUIViewController.m */,
 				134814211AA4EA7D00B7C361 /* Products */,
-				641E28441F0EEC8500443AF6 /* libRCTVideo.a */,
 			);
 			sourceTree = "<group>";
 		};

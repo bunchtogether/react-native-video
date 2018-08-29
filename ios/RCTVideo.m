@@ -283,11 +283,13 @@ static int const RCTVideoUnset = -1;
 
 - (void)addPlayerItemObservers
 {
-  [_playerItem addObserver:self forKeyPath:statusKeyPath options:0 context:nil];
-  [_playerItem addObserver:self forKeyPath:playbackBufferEmptyKeyPath options:0 context:nil];
-  [_playerItem addObserver:self forKeyPath:playbackLikelyToKeepUpKeyPath options:0 context:nil];
-  [_playerItem addObserver:self forKeyPath:timedMetadata options:NSKeyValueObservingOptionNew context:nil];
-  _playerItemObserversSet = YES;
+  dispatch_sync(dispatch_get_main_queue(), ^{
+    [_playerItem addObserver:self forKeyPath:statusKeyPath options:0 context:nil];
+    [_playerItem addObserver:self forKeyPath:playbackBufferEmptyKeyPath options:NSKeyValueObservingOptionNew context:nil];
+    [_playerItem addObserver:self forKeyPath:playbackLikelyToKeepUpKeyPath options:NSKeyValueObservingOptionNew context:nil];
+    [_playerItem addObserver:self forKeyPath:timedMetadata options:NSKeyValueObservingOptionNew context:nil];
+    _playerItemObserversSet = YES;
+  });
 }
 
 /* Fixes https://github.com/brentvatne/react-native-video/issues/43
@@ -538,16 +540,20 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
                                         @"domain": _playerItem.error.domain},
                             @"target": self.reactTag});
       }
-    } else if ([keyPath isEqualToString:playbackBufferEmptyKeyPath]) {
-      _playerBufferEmpty = YES;
-      self.onVideoBuffer(@{@"isBuffering": @(YES), @"target": self.reactTag});
-    } else if ([keyPath isEqualToString:playbackLikelyToKeepUpKeyPath]) {
-      // Continue playing (or not if paused) after being paused due to hitting an unbuffered zone.
-      if ((!(_controls || _fullscreenPlayerPresented) || _playerBufferEmpty) && _playerItem.playbackLikelyToKeepUp) {
-        [self setPaused:_paused];
+    } else if ([keyPath isEqualToString:playbackBufferEmptyKeyPath] || [keyPath isEqualToString:playbackLikelyToKeepUpKeyPath]) {
+      if(_playerItem.playbackBufferEmpty && !_playerItem.playbackLikelyToKeepUp) {
+        _playerBufferEmpty = YES;
+        NSLog(@"BUFFERING START");
+        self.onVideoBuffer(@{@"isBuffering": @(YES), @"target": self.reactTag});
+      } else {
+        // Continue playing (or not if paused) after being paused due to hitting an unbuffered zone.
+        if ((!(_controls || _fullscreenPlayerPresented) || _playerBufferEmpty) && _playerItem.playbackLikelyToKeepUp) {
+          [self setPaused:_paused];
+        }
+        _playerBufferEmpty = NO;
+        NSLog(@"BUFFERING DONE");
+        self.onVideoBuffer(@{@"isBuffering": @(NO), @"target": self.reactTag});
       }
-      _playerBufferEmpty = NO;
-      self.onVideoBuffer(@{@"isBuffering": @(NO), @"target": self.reactTag});
     }
   } else if (object == _playerLayer) {
     if([keyPath isEqualToString:readyForDisplayKeyPath] && [change objectForKey:NSKeyValueChangeNewKey]) {
@@ -749,19 +755,22 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
 
 - (void)applyModifiers
 {
-  if (_muted) {
-    [_player setVolume:0];
-    [_player setMuted:YES];
-  } else {
-    [_player setVolume:_volume];
-    [_player setMuted:NO];
+  
+  if (_playerItem.status == AVPlayerItemStatusReadyToPlay) {
+    if (_muted) {
+      [_player setVolume:0];
+      [_player setMuted:YES];
+    } else {
+      [_player setVolume:_volume];
+      [_player setMuted:NO];
+    }
+    [self setPaused:_paused];
   }
 
   [self setSelectedAudioTrack:_selectedAudioTrack];
   [self setSelectedTextTrack:_selectedTextTrack];
   [self setResizeMode:_resizeMode];
   [self setRepeat:_repeat];
-  [self setPaused:_paused];
   [self setControls:_controls];
   [self setAllowsExternalPlayback:_allowsExternalPlayback];
 }

@@ -7,10 +7,11 @@
 
 #import <AVFoundation/AVFoundation.h>
 #import <Foundation/Foundation.h>
+#import "RCTVideoDownloader.h"
 
 @interface DownloadSessionOperation : NSOperation
 
-- (instancetype)initWithSession:(NSURLSession *)session url:(NSURL *)url cacheKey:(NSString *)cacheKey;
+- (instancetype)initWithDelegate:(RCTVideoDownloader *)delegate url:(NSURL *)url cacheKey:(NSString *)cacheKey;
 - (void)completeOperation;
 - (void)retry;
 - (void)suspend;

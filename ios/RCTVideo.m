@@ -283,13 +283,11 @@ static int const RCTVideoUnset = -1;
 
 - (void)addPlayerItemObservers
 {
-  dispatch_sync(dispatch_get_main_queue(), ^{
-    [_playerItem addObserver:self forKeyPath:statusKeyPath options:0 context:nil];
-    [_playerItem addObserver:self forKeyPath:playbackBufferEmptyKeyPath options:NSKeyValueObservingOptionNew context:nil];
-    [_playerItem addObserver:self forKeyPath:playbackLikelyToKeepUpKeyPath options:NSKeyValueObservingOptionNew context:nil];
-    [_playerItem addObserver:self forKeyPath:timedMetadata options:NSKeyValueObservingOptionNew context:nil];
-    _playerItemObserversSet = YES;
-  });
+  [_playerItem addObserver:self forKeyPath:statusKeyPath options:0 context:nil];
+  [_playerItem addObserver:self forKeyPath:playbackBufferEmptyKeyPath options:NSKeyValueObservingOptionNew context:nil];
+  [_playerItem addObserver:self forKeyPath:playbackLikelyToKeepUpKeyPath options:NSKeyValueObservingOptionNew context:nil];
+  [_playerItem addObserver:self forKeyPath:timedMetadata options:NSKeyValueObservingOptionNew context:nil];
+  _playerItemObserversSet = YES;
 }
 
 /* Fixes https://github.com/brentvatne/react-native-video/issues/43
@@ -541,17 +539,15 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
                             @"target": self.reactTag});
       }
     } else if ([keyPath isEqualToString:playbackBufferEmptyKeyPath] || [keyPath isEqualToString:playbackLikelyToKeepUpKeyPath]) {
-      if(_playerItem.playbackBufferEmpty && !_playerItem.playbackLikelyToKeepUp) {
+      if(_playerItem.playbackBufferEmpty && !_playerItem.playbackLikelyToKeepUp && !_playerBufferEmpty) {
         _playerBufferEmpty = YES;
-        NSLog(@"BUFFERING START");
         self.onVideoBuffer(@{@"isBuffering": @(YES), @"target": self.reactTag});
-      } else {
+      } else if(_playerBufferEmpty) {
         // Continue playing (or not if paused) after being paused due to hitting an unbuffered zone.
         if ((!(_controls || _fullscreenPlayerPresented) || _playerBufferEmpty) && _playerItem.playbackLikelyToKeepUp) {
           [self setPaused:_paused];
         }
         _playerBufferEmpty = NO;
-        NSLog(@"BUFFERING DONE");
         self.onVideoBuffer(@{@"isBuffering": @(NO), @"target": self.reactTag});
       }
     }

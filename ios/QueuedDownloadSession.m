@@ -7,6 +7,7 @@
 
 #import <AVFoundation/AVFoundation.h>
 #import "QueuedDownloadSession.h"
+#import "RCTVideoDownloader.h"
 
 #define QUEUED_DOWNLOAD_BLOCK(KEYPATH, BLOCK) \
 [self willChangeValueForKey:KEYPATH]; \
@@ -15,6 +16,7 @@ BLOCK(); \
 
 @interface DownloadSessionOperation ()
 @property (nonatomic, strong) AVAssetDownloadURLSession *session;
+@property (nonatomic, strong) RCTVideoDownloader *delegate;
 @property (nonatomic, strong) NSURL *url;
 @property (nonatomic, strong) AVAssetDownloadTask *task;
 @property (nonatomic, assign) int attempt;
@@ -25,12 +27,13 @@ BLOCK(); \
     BOOL _executing;
 }
 
-- (instancetype)initWithSession:(AVAssetDownloadURLSession *)session url:(NSURL *)url cacheKey:(NSString *)cacheKey {
+- (instancetype)initWithDelegate:(RCTVideoDownloader *)delegate url:(NSURL *)url cacheKey:(NSString *)cacheKey {
     if (self = [super init]) {
         self.suspended = NO;
         self.url = url;
         self.cacheKey = cacheKey;
-        self.session = session;
+        self.session = delegate.session;
+        self.delegate = delegate;
         self.attempt = 1;
         _executing = NO;
         _finished = NO;
@@ -85,7 +88,7 @@ BLOCK(); \
         QUEUED_DOWNLOAD_BLOCK(@"isFinished", ^{ _finished = YES; });
         return;
     }
-    if([self hasCachedAsset]) {
+    if([self.delegate hasCachedAsset:self.cacheKey]) {
         NSLog(@"Downloader prefetch found cached asset for %@", self.cacheKey);
         [self completeOperation];
         return;
@@ -134,31 +137,6 @@ BLOCK(); \
     
     [self didChangeValueForKey:@"isExecuting"];
     [self didChangeValueForKey:@"isFinished"];
-}
-
-- (BOOL)hasCachedAsset {
-#if TARGET_IPHONE_SIMULATOR
-    return NO;
-#else
-    NSData *bookmarkData = [[NSUserDefaults standardUserDefaults] objectForKey:self.cacheKey];
-    if(bookmarkData) {
-        NSError *error = nil;
-        BOOL stale;
-        NSURL *location = [NSURL URLByResolvingBookmarkData:bookmarkData
-                                                    options:NSURLBookmarkResolutionWithoutUI
-                                              relativeToURL:nil
-                                        bookmarkDataIsStale:&stale
-                                                      error:&error];
-        if(error) {
-            return NO;
-        } else if(stale) {
-            return NO;
-        } else if(location) {
-            return YES;
-        }
-    }
-    return NO;
-#endif
 }
 
 @end

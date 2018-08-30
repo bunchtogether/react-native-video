@@ -4,9 +4,13 @@
 
 @interface RCTVideoDownloader : NSObject <AVAssetDownloadDelegate>
 
+@property (nonatomic, strong) AVAssetDownloadURLSession *session;
+
 + (instancetype)sharedVideoDownloader;
 
 - (instancetype)init;
+
+- (BOOL)hasCachedAsset:(NSString *)cacheKey;
 
 - (void)prefetch:(NSString *)uri
         cacheKey:(NSString *)cacheKey

@@ -41,7 +41,6 @@ RCT_EXPORT_METHOD(prefetch:(NSString *)uri
         }
     }
     NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
-    NSLog(@"Prefetch cookies: %@", cookies);
     [[RCTVideoDownloader sharedVideoDownloader] prefetch:uri cacheKey:cacheKey cookies:cookies resolve:resolve reject:reject];
 }
 RCT_EXPORT_VIEW_PROPERTY(src, NSDictionary);

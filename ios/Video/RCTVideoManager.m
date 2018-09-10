@@ -17,11 +17,31 @@ RCT_EXPORT_MODULE();
 
 RCT_EXPORT_METHOD(prefetch:(NSString *)uri
                   cacheKey:(NSString *)cacheKey
+                  cookies:(NSArray *)cookieArray
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 {
-    // See https://stackoverflow.com/questions/691761/create-a-cookie-for-nsurlrequest
+    if(cookieArray && [cookieArray count] > 0) {
+        for (NSDictionary *cookieObject in cookieArray) {
+            NSString *domain = cookieObject[@"domain"];
+            NSString *path = cookieObject[@"path"];
+            if(path == nil) {
+                path = @"/";
+            }
+            NSString *name = cookieObject[@"name"];
+            NSString *value = cookieObject[@"value"];
+            NSDictionary *properties = [NSDictionary dictionaryWithObjectsAndKeys:
+                                        domain, NSHTTPCookieDomain,
+                                        path, NSHTTPCookiePath,
+                                        name, NSHTTPCookieName,
+                                        value, NSHTTPCookieValue,
+                                        nil];
+            NSHTTPCookie *cookie = [NSHTTPCookie cookieWithProperties:properties];
+            [[NSHTTPCookieStorage sharedHTTPCookieStorage] setCookie:cookie];
+        }
+    }
     NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
+    NSLog(@"Prefetch cookies: %@", cookies);
     [[RCTVideoDownloader sharedVideoDownloader] prefetch:uri cacheKey:cacheKey cookies:cookies resolve:resolve reject:reject];
 }
 RCT_EXPORT_VIEW_PROPERTY(src, NSDictionary);
@@ -64,12 +84,12 @@ RCT_EXPORT_VIEW_PROPERTY(onPlaybackRateChange, RCTBubblingEventBlock);
 
 - (NSDictionary *)constantsToExport
 {
-  return @{
-    @"ScaleNone": AVLayerVideoGravityResizeAspect,
-    @"ScaleToFill": AVLayerVideoGravityResize,
-    @"ScaleAspectFit": AVLayerVideoGravityResizeAspect,
-    @"ScaleAspectFill": AVLayerVideoGravityResizeAspectFill
-  };
+    return @{
+             @"ScaleNone": AVLayerVideoGravityResizeAspect,
+             @"ScaleToFill": AVLayerVideoGravityResize,
+             @"ScaleAspectFit": AVLayerVideoGravityResizeAspect,
+             @"ScaleAspectFill": AVLayerVideoGravityResizeAspectFill
+             };
 }
 
 + (BOOL)requiresMainQueueSetup
@@ -78,3 +98,4 @@ RCT_EXPORT_VIEW_PROPERTY(onPlaybackRateChange, RCTBubblingEventBlock);
 }
 
 @end
+

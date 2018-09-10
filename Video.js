@@ -228,6 +228,7 @@ export default class Video extends Component {
         type: source.type || '',
         mainVer: source.mainVer || 0,
         patchVer: source.patchVer || 0,
+        cookies: source.cookies || [],
         requestHeaders: source.headers ? this.stringsOnlyObject(source.headers) : {}
       },
       onVideoLoadStart: this._onLoadStart,
@@ -284,13 +285,13 @@ export default class Video extends Component {
   }
 }
 
-Video.prefetch = (uri, cacheKey) => {
+Video.prefetch = (uri, cacheKey, cookies) => {
   if(!uri) {
     throw new Error("Missing required argument 'uri'");
   }
 
   if (RCTVideoNativeModule && RCTVideoNativeModule.prefetch) {
-    return RCTVideoNativeModule.prefetch(uri, cacheKey || uri);
+    return RCTVideoNativeModule.prefetch(uri, cacheKey || uri, cookies || []);
   }
   return Promise.resolve();
 }
@@ -320,7 +321,15 @@ Video.propTypes = {
   /* Wrapper component */
   source: PropTypes.oneOfType([
     PropTypes.shape({
-      uri: PropTypes.string
+      uri: PropTypes.string,
+      cacheKey: PropTypes.string,
+      cookies: PropTypes.arrayOf(PropTypes.shape({
+        domain: PropTypes.string.isRequired,
+        path: PropTypes.string,
+        name: PropTypes.string.isRequired,
+        value: PropTypes.string.isRequired
+      })),
+      requestHeaders: PropTypes.object
     }),
     // Opaque type returned by require('./video.mp4')
     PropTypes.number

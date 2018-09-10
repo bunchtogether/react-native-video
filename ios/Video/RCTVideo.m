@@ -324,12 +324,31 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
   bool isAsset = [RCTConvert BOOL:[source objectForKey:@"isAsset"]];
   NSString *uri = [source objectForKey:@"uri"];
   NSString *type = [source objectForKey:@"type"];
-  
+  NSArray *cookieArray = [RCTConvert NSArray:[source objectForKey:@"cookies"]];
+  if(cookieArray && [cookieArray count] > 0) {
+    for (NSDictionary *cookieObject in cookieArray) {
+      NSString *domain = cookieObject[@"domain"];
+      NSString *path = cookieObject[@"path"];
+      if(path == nil) {
+        path = @"/";
+      }
+      NSString *name = cookieObject[@"name"];
+      NSString *value = cookieObject[@"value"];
+      NSDictionary *properties = [NSDictionary dictionaryWithObjectsAndKeys:
+                                  domain, NSHTTPCookieDomain,
+                                  path, NSHTTPCookiePath,
+                                  name, NSHTTPCookieName,
+                                  value, NSHTTPCookieValue,
+                                  nil];
+      NSHTTPCookie *cookie = [NSHTTPCookie cookieWithProperties:properties];
+      [[NSHTTPCookieStorage sharedHTTPCookieStorage] setCookie:cookie];
+    }
+  }
+  NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
   NSMutableDictionary *assetOptions = [[NSMutableDictionary alloc] init];
   if (isNetwork) {
     NSString *cacheKey = [source objectForKey:@"cacheKey"];
     NSString *ck = cacheKey ? cacheKey : uri;
-    NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
     [[RCTVideoDownloader sharedVideoDownloader] getAsset:[NSURL URLWithString:uri] cacheKey:ck cookies:cookies completion:^(AVURLAsset *asset, NSError *error){
       if(error) {
         self.onVideoError(@{@"error": @{@"code": [NSNumber numberWithInteger: _playerItem.error.code],

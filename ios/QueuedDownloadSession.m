@@ -19,6 +19,7 @@ BLOCK(); \
 @property (nonatomic, strong) RCTVideoDownloader *delegate;
 @property (nonatomic, strong) NSURL *url;
 @property (nonatomic, strong) AVAssetDownloadTask *task;
+@property (nonatomic, copy) NSArray *cookies;
 @property (nonatomic, assign) int attempt;
 @end
 
@@ -27,13 +28,14 @@ BLOCK(); \
     BOOL _executing;
 }
 
-- (instancetype)initWithDelegate:(RCTVideoDownloader *)delegate url:(NSURL *)url cacheKey:(NSString *)cacheKey {
+- (instancetype)initWithDelegate:(RCTVideoDownloader *)delegate url:(NSURL *)url cacheKey:(NSString *)cacheKey cookies:(NSArray *)cookies {
     if (self = [super init]) {
         self.suspended = NO;
         self.url = url;
         self.cacheKey = cacheKey;
         self.session = delegate.session;
         self.delegate = delegate;
+        self.cookies = cookies;
         self.attempt = 1;
         _executing = NO;
         _finished = NO;
@@ -47,8 +49,7 @@ BLOCK(); \
 }
 
 - (void)resume {
-    NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
-    AVURLAsset *asset = [AVURLAsset URLAssetWithURL:self.url options:@{AVURLAssetHTTPCookiesKey : cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
+    AVURLAsset *asset = [AVURLAsset URLAssetWithURL:self.url options:@{AVURLAssetHTTPCookiesKey : self.cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
     asset.resourceLoader.preloadsEligibleContentKeys = YES;
     self.task = [self.session assetDownloadTaskWithURLAsset:asset
                                                  assetTitle:@"Video Download"
@@ -93,8 +94,7 @@ BLOCK(); \
         [self completeOperation];
         return;
     }
-    NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
-    AVURLAsset *asset = [AVURLAsset URLAssetWithURL:self.url options:@{AVURLAssetHTTPCookiesKey : cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
+    AVURLAsset *asset = [AVURLAsset URLAssetWithURL:self.url options:@{AVURLAssetHTTPCookiesKey : self.cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
     asset.resourceLoader.preloadsEligibleContentKeys = YES;
     self.task = [self.session assetDownloadTaskWithURLAsset:asset
                                                  assetTitle:@"Video Download"

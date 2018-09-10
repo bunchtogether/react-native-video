@@ -86,13 +86,17 @@
 #if TARGET_IPHONE_SIMULATOR
   return NO;
 #else
-  AVURLAsset *validatedAsset = self.validatedAssets[cacheKey];
-  if(validatedAsset) {
-    return YES;
+  @synchronized(self.validatedAssets) {
+    AVURLAsset *validatedAsset = self.validatedAssets[cacheKey];
+    if(validatedAsset) {
+      return YES;
+    }
   }
-  AVAssetDownloadTask *activeTask = self.tasks[cacheKey];
-  if(activeTask) {
-    return YES;
+  @synchronized(self.tasks) {
+    AVAssetDownloadTask *activeTask = self.tasks[cacheKey];
+    if(activeTask) {
+      return YES;
+    }
   }
   for(DownloadSessionOperation *operation in self.mainOperationQueue.operations) {
     if(operation.task && [operation.cacheKey isEqualToString:cacheKey]) {
@@ -126,26 +130,34 @@
 
 - (void)clearCachedAsset:(NSString *)cacheKey {
   RCTLog(@"VideoDownloader: Clearing cache for %@", cacheKey);
-  AVURLAsset *validatedAsset = self.validatedAssets[cacheKey];
-  if(validatedAsset) {
-    [self.validatedAssets removeObjectForKey:cacheKey];
+  @synchronized(self.validatedAssets) {
+    AVURLAsset *validatedAsset = self.validatedAssets[cacheKey];
+    if(validatedAsset) {
+      [self.validatedAssets removeObjectForKey:cacheKey];
+    }
   }
-  AVAssetDownloadTask *activeTask = self.tasks[cacheKey];
-  if(activeTask) {
-    [activeTask cancel];
-    [self.tasks removeObjectForKey:cacheKey];
+  @synchronized(self.tasks) {
+    AVAssetDownloadTask *activeTask = self.tasks[cacheKey];
+    if(activeTask) {
+      [activeTask cancel];
+      [self.tasks removeObjectForKey:cacheKey];
+    }
   }
   [[NSUserDefaults standardUserDefaults] removeObjectForKey:cacheKey];
 }
 
 - (void)checkAsset:(AVURLAsset *)asset cacheKey:(NSString *)cacheKey completion:(void (^)(AVURLAsset *, NSError *))completion {
   [asset loadValuesAsynchronouslyForKeys:@[@"duration"] completionHandler:^{
-    [self.tasks removeObjectForKey:cacheKey];
+    @synchronized(self.tasks) {
+      [self.tasks removeObjectForKey:cacheKey];
+    }
     NSError *error = nil;
     AVKeyValueStatus status = [asset statusOfValueForKey:@"duration" error:&error];
     if(status == AVKeyValueStatusLoaded) {
       NSLog(@"VideoDownloader: Validated asset with key %@", cacheKey);
-      self.validatedAssets[cacheKey] = asset;
+      @synchronized(self.validatedAssets) {
+        self.validatedAssets[cacheKey] = asset;
+      }
       completion(asset, nil);
       return;
     }
@@ -201,8 +213,7 @@
   return nil;
 }
 
-- (AVAssetDownloadTask *)getNewTask:(NSURL *)url path:(NSString *)path cacheKey:(NSString *)cacheKey {
-  NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
+- (AVAssetDownloadTask *)getNewTask:(NSURL *)url path:(NSString *)path cacheKey:(NSString *)cacheKey cookies:(NSArray *)cookies {
   AVURLAsset *asset = [AVURLAsset URLAssetWithURL:url options:@{AVURLAssetHTTPCookiesKey : cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
   asset.resourceLoader.preloadsEligibleContentKeys = YES;
   AVAssetDownloadTask *task = [self.session assetDownloadTaskWithURLAsset:asset
@@ -211,27 +222,35 @@
                                                                   options:nil];
   task.taskDescription = cacheKey;
   [task resume];
-  self.tasks[cacheKey] = task;
+  @synchronized(self.tasks) {
+    self.tasks[cacheKey] = task;
+  }
   NSLog(@"VideoDownloader: Got new task %lu for asset %@ with key %@", (unsigned long)task.taskIdentifier, path, cacheKey);
   return task;
 }
 
-- (void)getAsset:(NSURL *)url cacheKey:(NSString *)cacheKey completion:(void (^)(AVURLAsset *asset, NSError *))completion {
+- (void)getAsset:(NSURL *)url cacheKey:(NSString *)cacheKey cookies:(NSArray *)cookies completion:(void (^)(AVURLAsset *asset, NSError *))completion {
   dispatch_async(self.queue, ^{
     NSString *path = url.path;
-    AVURLAsset *validatedAsset = self.validatedAssets[cacheKey];
+    AVURLAsset *validatedAsset;
+    @synchronized(self.validatedAssets) {
+      validatedAsset = self.validatedAssets[cacheKey];
+    }
     if(validatedAsset) {
       NSLog(@"VideoDownloader: Found validated asset %@ with key %@", path, cacheKey);
       completion(validatedAsset, nil);
       return;
     }
-    AVAssetDownloadTask *activeTask = self.tasks[cacheKey];
+    AVAssetDownloadTask *activeTask;
+    @synchronized(self.tasks) {
+      activeTask = self.tasks[cacheKey];
+    }
     if(activeTask) {
       [self checkAsset:activeTask.URLAsset cacheKey:cacheKey completion:^(AVURLAsset *asset, NSError *error){
         [activeTask cancel];
         if(error) {
           [[NSUserDefaults standardUserDefaults] removeObjectForKey:cacheKey];
-          AVAssetDownloadTask *task = [self getNewTask:url path:path cacheKey:cacheKey];
+          AVAssetDownloadTask *task = [self getNewTask:url path:path cacheKey:cacheKey cookies:cookies];
           [self checkAsset:task.URLAsset cacheKey:cacheKey completion:completion];
         } else {
           completion(asset, nil);
@@ -245,7 +264,7 @@
         [prefetchTask cancel];
         if(error) {
           [[NSUserDefaults standardUserDefaults] removeObjectForKey:cacheKey];
-          AVAssetDownloadTask *task = [self getNewTask:url path:path cacheKey:cacheKey];
+          AVAssetDownloadTask *task = [self getNewTask:url path:path cacheKey:cacheKey cookies:cookies];
           [self checkAsset:task.URLAsset cacheKey:cacheKey completion:completion];
         } else {
           completion(asset, nil);
@@ -258,7 +277,7 @@
       [self checkAsset:bookmarkedAsset cacheKey:cacheKey completion:^(AVURLAsset *asset, NSError *error){
         if(error) {
           [[NSUserDefaults standardUserDefaults] removeObjectForKey:cacheKey];
-          AVAssetDownloadTask *task = [self getNewTask:url path:path cacheKey:cacheKey];
+          AVAssetDownloadTask *task = [self getNewTask:url path:path cacheKey:cacheKey cookies:cookies];
           [self checkAsset:task.URLAsset cacheKey:cacheKey completion:completion];
         } else {
           completion(asset, nil);
@@ -266,13 +285,14 @@
       }];
       return;
     }
-    AVAssetDownloadTask *task = [self getNewTask:url path:path cacheKey:cacheKey];
+    AVAssetDownloadTask *task = [self getNewTask:url path:path cacheKey:cacheKey cookies:cookies];
     [self checkAsset:task.URLAsset cacheKey:cacheKey completion:completion];
   });
 }
 
 - (void)prefetch:(NSString *)uri
         cacheKey:(NSString *)cacheKey
+         cookies:(NSArray *)cookies
          resolve:(RCTPromiseResolveBlock)resolve
           reject:(RCTPromiseRejectBlock)reject {
 #if !TARGET_IPHONE_SIMULATOR
@@ -282,7 +302,7 @@
       NSLog(@"VideoDownloader: Redundant cache download skipped for %@", cacheKey);
     } else if(![self hasCachedAsset:cacheKey]) {
       [self.cacheKeys addObject: cacheKey];
-      DownloadSessionOperation *operation = [[DownloadSessionOperation alloc] initWithDelegate:self url:url cacheKey:cacheKey];
+      DownloadSessionOperation *operation = [[DownloadSessionOperation alloc] initWithDelegate:self url:url cacheKey:cacheKey cookies:cookies];
       [self.mainOperationQueue addOperation:operation];
     }
   });

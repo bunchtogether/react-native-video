@@ -14,10 +14,15 @@
 
 - (void)prefetch:(NSString *)uri
         cacheKey:(NSString *)cacheKey
+         cookies:(NSArray *)cookies
          resolve:(RCTPromiseResolveBlock)resolve
          reject:(RCTPromiseRejectBlock)reject;
 
-- (void)getAsset:(NSURL *)url cacheKey:(NSString *)cacheKey completion:(void (^)(AVURLAsset *asset, NSError *))completion;
+- (void)getAsset:(NSURL *)url
+        cacheKey:(NSString *)cacheKey
+         cookies:(NSArray *)cookies
+      completion:(void (^)(AVURLAsset *asset, NSError *))completion;
+
 - (BOOL)hasCachedAsset:(NSString *)cacheKey;
 - (void)clearCachedAsset:(NSString *)cacheKey;
 - (void)invalidate;

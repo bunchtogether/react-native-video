@@ -20,7 +20,9 @@ RCT_EXPORT_METHOD(prefetch:(NSString *)uri
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 {
-    [[RCTVideoDownloader sharedVideoDownloader] prefetch:uri cacheKey:cacheKey resolve:resolve reject:reject];
+    // See https://stackoverflow.com/questions/691761/create-a-cookie-for-nsurlrequest
+    NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
+    [[RCTVideoDownloader sharedVideoDownloader] prefetch:uri cacheKey:cacheKey cookies:cookies resolve:resolve reject:reject];
 }
 RCT_EXPORT_VIEW_PROPERTY(src, NSDictionary);
 RCT_EXPORT_VIEW_PROPERTY(resizeMode, NSString);

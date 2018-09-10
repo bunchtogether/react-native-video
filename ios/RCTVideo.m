@@ -326,7 +326,8 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
     if (isNetwork) {
       NSString *cacheKey = [source objectForKey:@"cacheKey"];
       NSString *ck = cacheKey ? cacheKey : uri;
-      [[RCTVideoDownloader sharedVideoDownloader] getAsset:[NSURL URLWithString:uri] cacheKey:ck completion:^(AVURLAsset *asset, NSError *error){
+      NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
+      [[RCTVideoDownloader sharedVideoDownloader] getAsset:[NSURL URLWithString:uri] cacheKey:ck cookies:cookies completion:^(AVURLAsset *asset, NSError *error){
         if(error) {
           self.onVideoError(@{@"error": @{@"code": [NSNumber numberWithInteger: _playerItem.error.code],
                                           @"domain": error.domain},

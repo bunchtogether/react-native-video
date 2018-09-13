@@ -73,8 +73,9 @@
   return sharedVideoDownloader;
 }
 
-- (void)invalidate
+- (void)dealloc
 {
+  NSLog(@"RCTVideoDownloader dealloc");
   [[NSNotificationCenter defaultCenter] removeObserver:self];
   [self.session invalidateAndCancel];
   [self.mainOperationQueue cancelAllOperations];
@@ -204,7 +205,6 @@
 
 - (AVAssetDownloadTask *)getPrefetchTask:(NSString *)cacheKey path:(NSString *)path {
   for(DownloadSessionOperation *operation in self.mainOperationQueue.operations) {
-    NSLog(@"VideoDownloader: Operation has task: %@ | Cache Key: %@ | Compare: %@ | %@", operation.task ? @"YES":@"NO", operation.cacheKey, cacheKey, [operation.cacheKey isEqualToString:cacheKey] ? @"MATCH" : @"NO MATCH");
     if(operation.task && [operation.cacheKey isEqualToString:cacheKey]) {
       NSLog(@"VideoDownloader: Got prefetch task %lu for asset %@ with key %@", (unsigned long)operation.task.taskIdentifier, path, cacheKey);
       return operation.task;

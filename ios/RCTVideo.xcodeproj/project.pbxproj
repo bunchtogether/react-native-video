@@ -7,13 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		727A43442146F4CA00B5B3DB /* UIView+FindUIViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 72D234932146F36600635555 /* UIView+FindUIViewController.m */; };
-		727A43452146F4CA00B5B3DB /* RCTVideoDownloader.m in Sources */ = {isa = PBXBuildFile; fileRef = 72D2348A2146F36600635555 /* RCTVideoDownloader.m */; };
-		727A43462146F4CA00B5B3DB /* RCTVideo.m in Sources */ = {isa = PBXBuildFile; fileRef = 72D234922146F36600635555 /* RCTVideo.m */; };
-		727A43472146F4CA00B5B3DB /* RCTVideoManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 72D2348D2146F36600635555 /* RCTVideoManager.m */; };
-		727A43482146F4CA00B5B3DB /* BackgroundDownloadAppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 72D2348E2146F36600635555 /* BackgroundDownloadAppDelegate.m */; };
-		727A43492146F4CA00B5B3DB /* RCTVideoPlayerViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 72D234892146F36600635555 /* RCTVideoPlayerViewController.m */; };
-		727A434A2146F4CA00B5B3DB /* QueuedDownloadSession.m in Sources */ = {isa = PBXBuildFile; fileRef = 72D234952146F36600635555 /* QueuedDownloadSession.m */; };
 		72D234962146F36600635555 /* RCTVideoPlayerViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 72D234892146F36600635555 /* RCTVideoPlayerViewController.m */; };
 		72D234972146F36600635555 /* RCTVideoDownloader.m in Sources */ = {isa = PBXBuildFile; fileRef = 72D2348A2146F36600635555 /* RCTVideoDownloader.m */; };
 		72D234982146F36600635555 /* RCTVideoManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 72D2348D2146F36600635555 /* RCTVideoManager.m */; };
@@ -33,24 +26,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		641E28421F0EEC8500443AF6 /* CopyFiles */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "include/$(PRODUCT_NAME)";
-			dstSubfolderSpec = 16;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		134814201AA4EA6300B7C361 /* libRCTVideo.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libRCTVideo.a; sourceTree = BUILT_PRODUCTS_DIR; };
-		72D234862146F30C00635555 /* libRCTVideo.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libRCTVideo.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		72D234872146F36600635555 /* RCTVideo.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = RCTVideo.h; path = Video/RCTVideo.h; sourceTree = "<group>"; };
 		72D234882146F36600635555 /* RCTVideoPlayerViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = RCTVideoPlayerViewController.h; path = Video/RCTVideoPlayerViewController.h; sourceTree = "<group>"; };
 		72D234892146F36600635555 /* RCTVideoPlayerViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = RCTVideoPlayerViewController.m; path = Video/RCTVideoPlayerViewController.m; sourceTree = "<group>"; };
-		72D2348A2146F36600635555 /* RCTVideoDownloader.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = RCTVideoDownloader.m; path = Video/RCTVideoDownloader.m; sourceTree = "<group>"; };
+		72D2348A2146F36600635555 /* RCTVideoDownloader.m */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 2; lastKnownFileType = sourcecode.c.objc; name = RCTVideoDownloader.m; path = Video/RCTVideoDownloader.m; sourceTree = "<group>"; tabWidth = 2; };
 		72D2348B2146F36600635555 /* QueuedDownloadSession.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = QueuedDownloadSession.h; path = Video/QueuedDownloadSession.h; sourceTree = "<group>"; };
 		72D2348C2146F36600635555 /* BackgroundDownloadAppDelegate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = BackgroundDownloadAppDelegate.h; path = Video/BackgroundDownloadAppDelegate.h; sourceTree = "<group>"; };
 		72D2348D2146F36600635555 /* RCTVideoManager.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = RCTVideoManager.m; path = Video/RCTVideoManager.m; sourceTree = "<group>"; };
@@ -66,13 +49,6 @@
 
 /* Begin PBXFrameworksBuildPhase section */
 		58B511D81A9E6C8500147676 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		641E28411F0EEC8500443AF6 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -116,7 +92,6 @@
 				72D2348F2146F36600635555 /* UIView+FindUIViewController.h */,
 				72D234932146F36600635555 /* UIView+FindUIViewController.m */,
 				134814211AA4EA7D00B7C361 /* Products */,
-				72D234862146F30C00635555 /* libRCTVideo.a */,
 				49E995712048B4CE00EA7890 /* Frameworks */,
 			);
 			sourceTree = "<group>";
@@ -141,23 +116,6 @@
 			productReference = 134814201AA4EA6300B7C361 /* libRCTVideo.a */;
 			productType = "com.apple.product-type.library.static";
 		};
-		641E28431F0EEC8500443AF6 /* RCTVideo-tvOS */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 641E284C1F0EEC8500443AF6 /* Build configuration list for PBXNativeTarget "RCTVideo-tvOS" */;
-			buildPhases = (
-				641E28401F0EEC8500443AF6 /* Sources */,
-				641E28411F0EEC8500443AF6 /* Frameworks */,
-				641E28421F0EEC8500443AF6 /* CopyFiles */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			name = "RCTVideo-tvOS";
-			productName = "RCTVideo-tvOS";
-			productReference = 72D234862146F30C00635555 /* libRCTVideo.a */;
-			productType = "com.apple.product-type.library.static";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -169,10 +127,6 @@
 				TargetAttributes = {
 					58B511DA1A9E6C8500147676 = {
 						CreatedOnToolsVersion = 6.1.1;
-					};
-					641E28431F0EEC8500443AF6 = {
-						CreatedOnToolsVersion = 8.3.3;
-						ProvisioningStyle = Automatic;
 					};
 				};
 			};
@@ -189,7 +143,6 @@
 			projectRoot = "";
 			targets = (
 				58B511DA1A9E6C8500147676 /* RCTVideo */,
-				641E28431F0EEC8500443AF6 /* RCTVideo-tvOS */,
 			);
 		};
 /* End PBXProject section */
@@ -206,20 +159,6 @@
 				72D234992146F36600635555 /* BackgroundDownloadAppDelegate.m in Sources */,
 				72D234962146F36600635555 /* RCTVideoPlayerViewController.m in Sources */,
 				72D2349C2146F36600635555 /* QueuedDownloadSession.m in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		641E28401F0EEC8500443AF6 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				727A43442146F4CA00B5B3DB /* UIView+FindUIViewController.m in Sources */,
-				727A43452146F4CA00B5B3DB /* RCTVideoDownloader.m in Sources */,
-				727A43462146F4CA00B5B3DB /* RCTVideo.m in Sources */,
-				727A43472146F4CA00B5B3DB /* RCTVideoManager.m in Sources */,
-				727A43482146F4CA00B5B3DB /* BackgroundDownloadAppDelegate.m in Sources */,
-				727A43492146F4CA00B5B3DB /* RCTVideoPlayerViewController.m in Sources */,
-				727A434A2146F4CA00B5B3DB /* QueuedDownloadSession.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -331,43 +270,6 @@
 			};
 			name = Release;
 		};
-		641E284A1F0EEC8500443AF6 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CLANG_ANALYZER_NONNULL = YES;
-				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
-				CLANG_WARN_INFINITE_RECURSION = YES;
-				CLANG_WARN_SUSPICIOUS_MOVE = YES;
-				DEBUG_INFORMATION_FORMAT = dwarf;
-				GCC_NO_COMMON_BLOCKS = YES;
-				OTHER_LDFLAGS = "-ObjC";
-				PRODUCT_NAME = RCTVideo;
-				SDKROOT = appletvos;
-				SKIP_INSTALL = YES;
-				TVOS_DEPLOYMENT_TARGET = 10.2;
-			};
-			name = Debug;
-		};
-		641E284B1F0EEC8500443AF6 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CLANG_ANALYZER_NONNULL = YES;
-				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
-				CLANG_WARN_INFINITE_RECURSION = YES;
-				CLANG_WARN_SUSPICIOUS_MOVE = YES;
-				COPY_PHASE_STRIP = NO;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				GCC_NO_COMMON_BLOCKS = YES;
-				OTHER_LDFLAGS = "-ObjC";
-				PRODUCT_NAME = RCTVideo;
-				SDKROOT = appletvos;
-				SKIP_INSTALL = YES;
-				TVOS_DEPLOYMENT_TARGET = 10.2;
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -385,15 +287,6 @@
 			buildConfigurations = (
 				58B511F01A9E6C8500147676 /* Debug */,
 				58B511F11A9E6C8500147676 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		641E284C1F0EEC8500443AF6 /* Build configuration list for PBXNativeTarget "RCTVideo-tvOS" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				641E284A1F0EEC8500443AF6 /* Debug */,
-				641E284B1F0EEC8500443AF6 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

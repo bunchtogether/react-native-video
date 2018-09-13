@@ -129,14 +129,16 @@ BLOCK(); \
 }
 
 - (void)completeOperation {
-    [self willChangeValueForKey:@"isFinished"];
-    [self willChangeValueForKey:@"isExecuting"];
-    
-    _executing = NO;
-    _finished = YES;
-    
-    [self didChangeValueForKey:@"isExecuting"];
-    [self didChangeValueForKey:@"isFinished"];
+    if(_executing && !_finished) {
+        [self willChangeValueForKey:@"isFinished"];
+        [self willChangeValueForKey:@"isExecuting"];
+        
+        _executing = NO;
+        _finished = YES;
+        
+        [self didChangeValueForKey:@"isExecuting"];
+        [self didChangeValueForKey:@"isFinished"];
+    }
 }
 
 @end

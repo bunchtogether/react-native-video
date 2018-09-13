@@ -3,15 +3,21 @@
 A `<Video>` component for react-native, as seen in
 [react-native-login](https://github.com/brentvatne/react-native-login)!
 
-Requires react-native >= 0.40.0, for RN support of 0.19.0 - 0.39.0 please use a pre 1.0 version.
+Requires react-native >= 0.40.0
 
-### Version 3.0 breaking changes
+### Version 4.0.0 breaking changes
+Version 4.0.0 now requires Android SDK 26 or higher to use ExoPlayer. This is the default version as of React Native 0.56 and will be required by Google for all apps in October 2018.
+
+### Version 3.0.0 breaking changes
 Version 3.0 features a number of changes to existing behavior. See [Updating](#updating) for changes.
 
-## TOC
+## Table of Contents
 
 * [Installation](#installation)
 * [Usage](#usage)
+* [iOS App Transport Security](#ios-app-transport-security)
+* [Audio Mixing](#audio-mixing)
+* [Android Expansion File Usage](#android-expansion-file-usage)
 * [Updating](#updating)
 
 ## Installation
@@ -28,34 +34,43 @@ or using yarn:
 yarn add react-native-video
 ```
 
+Then follow the instructions for your platform to link react-native-video into your project:
+
 <details>
   <summary>iOS</summary>
 
-Run `react-native link` to link the react-native-video library.
+### Standard Method
 
-If you would like to allow other apps to play music over your video component, add:
+Run `react-native link react-native-video` to link the react-native-video library.
 
-**AppDelegate.m**
+### Using CocoaPods (required to enable caching)
 
-```objective-c
-#import <AVFoundation/AVFoundation.h>  // import
+Setup your Podfile like it is described in the [react-native documentation](https://facebook.github.io/react-native/docs/integration-with-existing-apps#configuring-cocoapods-dependencies). 
 
-- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
-{
-  ...
-  [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryAmbient error:nil];  // allow
-  ...
-}
+Depending on your requirements you have to choose between the two possible subpodspecs:
+
+Video only:
+
+```diff
+  pod 'Folly', :podspec => '../node_modules/react-native/third-party-podspecs/Folly.podspec'
++  `pod 'react-native-video', :path => '../node_modules/react-native-video/react-native-video.podspec'`
+end
 ```
-Note: you can also use the `ignoreSilentSwitch` prop, shown below.
+
+Video with caching ([more info](docs/caching.md)):
+
+```diff
+  pod 'Folly', :podspec => '../node_modules/react-native/third-party-podspecs/Folly.podspec'
++  `pod 'react-native-video/VideoCaching', :path => '../node_modules/react-native-video/react-native-video.podspec'`
+end
+```
+
 </details>
 
 <details>
   <summary>tvOS</summary>
   
-Run `react-native link` to link the react-native-video library.
-
-`react-native link` doesn’t work properly with the tvOS target so we need to add the library manually.
+`react-native link react-native-video` doesn’t work properly with the tvOS target so we need to add the library manually.
 
 First select your project in Xcode.
 
@@ -77,7 +92,7 @@ Select RCTVideo-tvOS
 <details>
   <summary>Android</summary>
 
-Run `react-native link` to link the react-native-video library.
+Run `react-native link react-native-video` to link the react-native-video library.
 
 Or if you have trouble, make the following additions to the given files manually:
 
@@ -180,6 +195,10 @@ using System.Collections.Generic;
 ## Usage
 
 ```javascript
+// Load the module
+
+import Video from 'react-native-video';
+
 // Within your render function, assuming you have a file called
 // "background.mp4" in your project. You can include multiple videos
 // on a single screen if you like.
@@ -208,6 +227,7 @@ var styles = StyleSheet.create({
 ### Configurable props
 * [allowsExternalPlayback](#allowsexternalplayback)
 * [audioOnly](#audioonly)
+* [bufferConfig](#bufferconfig)
 * [ignoreSilentSwitch](#ignoresilentswitch)
 * [muted](#muted)
 * [paused](#paused)
@@ -221,6 +241,7 @@ var styles = StyleSheet.create({
 * [resizeMode](#resizemode)
 * [selectedAudioTrack](#selectedaudiotrack)
 * [selectedTextTrack](#selectedtexttrack)
+* [source](#source)
 * [stereoPan](#stereopan)
 * [textTracks](#texttracks)
 * [useTextureView](#usetextureview)
@@ -259,6 +280,30 @@ Indicates whether the player should only play the audio track and instead of dis
 For this to work, the poster prop must be set.
 
 Platforms: all
+
+#### bufferConfig
+Adjust the buffer settings. This prop takes an object with one or more of the properties listed below.
+
+Property | Type | Description
+--- | --- | ---
+minBufferMs | number | The default minimum duration of media that the player will attempt to ensure is buffered at all times, in milliseconds.
+maxBufferMs | number | The default maximum duration of media that the player will attempt to buffer, in milliseconds.
+bufferForPlaybackMs | number | The default duration of media that must be buffered for playback to start or resume following a user action such as a seek, in milliseconds.
+playbackAfterRebufferMs | number | The default duration of media that must be buffered for playback to resume after a rebuffer, in milliseconds. A rebuffer is defined to be caused by buffer depletion rather than a user action.
+
+This prop should only be set when you are setting the source, changing it after the media is loaded will cause it to be reloaded.
+
+Example with default values:
+```
+bufferConfig={{
+  minBufferMs: 15000,
+  maxBufferMs: 50000,
+  bufferForPlaybackMs: 2500,
+  bufferForPlaybackAfterRebufferMs: 5000
+}}
+```
+
+Platforms: Android ExoPlayer
 
 #### ignoreSilentSwitch
 Controls the iOS silent switch behavior
@@ -412,6 +457,63 @@ If a track matching the specified Type (and Value if appropriate) is unavailable
 
 Platforms: Android ExoPlayer, iOS
 
+#### source
+Sets the media source. You can pass an asset loaded via require or an object with a uri.
+
+The docs for this prop are incomplete and will be updated as each option is investigated and tested.
+
+##### Asset loaded via require
+
+Example: 
+```
+const sintel = require('./sintel.mp4');
+
+source={sintel}
+```
+
+##### URI string
+
+A number of URI schemes are supported by passing an object with a `uri` attribute.
+
+###### Web address (http://, https://)
+
+Example:
+```
+source={ uri: 'https://www.sample-videos.com/video/mp4/720/big_buck_bunny_720p_10mb.mp4' }
+```
+
+Platforms: all
+
+###### File path (file://)
+
+Example:
+```
+source={ uri: 'file:///sdcard/Movies/sintel.mp4' }
+```
+
+Note: Your app will need to request permission to read external storage if you're accessing a file outside your app.
+
+Platforms: Android ExoPlayer, Android MediaPlayer, possibly others
+
+###### iPod Library (ipod-library://)
+
+Path to a sound file in your iTunes library. Typically shared from iTunes to your app.
+
+Example:
+```
+source={ uri: 'ipod-library:///path/to/music.mp3' }
+```
+
+Note: Using this feature adding an entry for NSAppleMusicUsageDescription to your Info.plist file as described [here](https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CocoaKeys.html)
+
+Platforms: iOS
+
+###### Other protocols
+
+The following other types are supported on some platforms, but aren't fully documented yet:
+`content://, ms-appx://, ms-appdata://, assets-library://`
+
+
 #### stereoPan
 Adjust the balance of the left and right audio channels.  Any value between –1.0 and 1.0 is accepted.
 * **-1.0** - Full left
@@ -543,7 +645,7 @@ Example:
   },
   audioTracks: [
     { language: 'es', title: 'Spanish', type: 'audio/mpeg', index: 0 },
-    { language: 'en', title: 'English', type: 'audio/mpeg', index: 1 } ],
+    { language: 'en', title: 'English', type: 'audio/mpeg', index: 1 }
   ],
   textTracks: [
     { title: '#1 French', language: 'fr', index: 0, type: 'text/vtt' },
@@ -580,8 +682,8 @@ Platforms: all
 #### onProgress
 Callback function that is called every progressInterval seconds with info about which position the media is currently playing.
 
-Property | Description
---- | ---
+Property | Type | Description
+--- | --- | ---
 currentTime | number | Current position in seconds
 playableDuration | number | Position to where the media can be played to using just the buffer in seconds
 seekableDuration | number | Position to where the media can be seeked to in seconds. Typically, the total length of the media
@@ -615,7 +717,9 @@ Example:
 }
 ```
 
-Platforms: Android ExoPlayer, iOS
+Support for timed metadata on Android MediaPlayer is limited at best and only compatible with some videos. It requires a target SDK of 23 or higher.
+
+Platforms: Android ExoPlayer, Android MediaPlayer, iOS
 
 ### Methods
 Methods operate on a ref to the Video element. You can create a ref using code like:
@@ -684,15 +788,35 @@ this.player.seek(120, 50); // Seek to 2 minutes with +/- 50 milliseconds accurac
 Platforms: iOS
 
 
-### Additional props
+### iOS App Transport Security
 
-To see the full list of available props, you can check the [propTypes](https://github.com/react-native-community/react-native-video/blob/master/Video.js#L246) of the Video.js component.
-
-- By default, iOS 9+ will only load encrypted HTTPS urls. If you need to load content from a webserver that only supports HTTP, you will need to modify your Info.plist file and add the following entry:
+- By default, iOS will only load encrypted (https) urls. If you want to load content from an unencrypted (http) source, you will need to modify your Info.plist file and add the following entry:
 
 <img src="./docs/AppTransportSecuritySetting.png" width="50%">
 
 For more detailed info check this [article](https://cocoacasts.com/how-to-add-app-transport-security-exception-domains)
+</details>
+
+### Audio Mixing
+
+At some point in the future, react-native-video will include an Audio Manager for configuring how videos mix with other apps playing sounds on the device.
+
+On iOS, if you would like to allow other apps to play music over your video component, make the following change:
+
+**AppDelegate.m**
+
+```objective-c
+#import <AVFoundation/AVFoundation.h>  // import
+
+- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
+{
+  ...
+  [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryAmbient error:nil];  // allow
+  ...
+}
+```
+
+You can also use the [ignoreSilentSwitch](ignoresilentswitch) prop.
 </details>
 
 ### Android Expansion File Usage

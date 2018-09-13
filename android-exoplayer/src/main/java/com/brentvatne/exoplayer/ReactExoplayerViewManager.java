@@ -15,10 +15,14 @@ import com.facebook.react.uimanager.annotations.ReactProp;
 import com.google.android.exoplayer2.DefaultLoadControl;
 import com.google.android.exoplayer2.upstream.RawResourceDataSource;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import javax.annotation.Nullable;
+
+import okhttp3.Cookie;
 
 public class ReactExoplayerViewManager extends ViewGroupManager<ReactExoplayerView> {
 
@@ -28,6 +32,7 @@ public class ReactExoplayerViewManager extends ViewGroupManager<ReactExoplayerVi
     private static final String PROP_SRC_URI = "uri";
     private static final String PROP_SRC_TYPE = "type";
     private static final String PROP_SRC_HEADERS = "requestHeaders";
+    private static final String PROP_SRC_COOKIES = "cookies";
     private static final String PROP_RESIZE_MODE = "resizeMode";
     private static final String PROP_REPEAT = "repeat";
     private static final String PROP_SELECTED_AUDIO_TRACK = "selectedAudioTrack";
@@ -93,7 +98,7 @@ public class ReactExoplayerViewManager extends ViewGroupManager<ReactExoplayerVi
         String uriString = src.hasKey(PROP_SRC_URI) ? src.getString(PROP_SRC_URI) : null;
         String extension = src.hasKey(PROP_SRC_TYPE) ? src.getString(PROP_SRC_TYPE) : null;
         Map<String, String> headers = src.hasKey(PROP_SRC_HEADERS) ? toStringMap(src.getMap(PROP_SRC_HEADERS)) : null;
-
+        List<Cookie> cookies = src.hasKey(PROP_SRC_COOKIES) ? toCookies(src.getArray(PROP_SRC_COOKIES)) : null;
 
         if (TextUtils.isEmpty(uriString)) {
             return;
@@ -103,7 +108,7 @@ public class ReactExoplayerViewManager extends ViewGroupManager<ReactExoplayerVi
             Uri srcUri = Uri.parse(uriString);
 
             if (srcUri != null) {
-                videoView.setSrc(srcUri, extension, headers);
+                videoView.setSrc(srcUri, extension, headers, cookies);
             }
         } else {
             int identifier = context.getResources().getIdentifier(
@@ -280,6 +285,25 @@ public class ReactExoplayerViewManager extends ViewGroupManager<ReactExoplayerVi
         while (iterator.hasNextKey()) {
             String key = iterator.nextKey();
             result.put(key, readableMap.getString(key));
+        }
+
+        return result;
+    }
+
+    static List<Cookie> toCookies(@Nullable ReadableArray readableArray) {
+        if (readableArray == null)
+            return null;
+
+        List<Cookie> result = new ArrayList<>(readableArray.size());
+        for (int i = 0; i < readableArray.size(); ++i) {
+            ReadableMap cookieObj = readableArray.getMap(i);
+            result.add(new Cookie.Builder()
+                    .domain(cookieObj.getString("domain"))
+                    .path(cookieObj.hasKey("path") ? cookieObj.getString("path") : "/")
+                    .name(cookieObj.getString("name"))
+                    .value(cookieObj.getString("value"))
+                    .build()
+            );
         }
 
         return result;

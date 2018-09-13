@@ -67,10 +67,13 @@ import java.net.CookieHandler;
 import java.net.CookieManager;
 import java.net.CookiePolicy;
 import java.lang.Math;
+import java.util.List;
 import java.util.Map;
 import java.lang.Object;
 import java.util.ArrayList;
 import java.util.Locale;
+
+import okhttp3.Cookie;
 
 @SuppressLint("ViewConstructor")
 class ReactExoplayerView extends FrameLayout implements
@@ -130,6 +133,7 @@ class ReactExoplayerView extends FrameLayout implements
     private boolean playInBackground = false;
     private boolean useTextureView = false;
     private Map<String, String> requestHeaders;
+    private List<Cookie> cookies;
     // \ End props
 
     // React
@@ -430,7 +434,7 @@ class ReactExoplayerView extends FrameLayout implements
      * @return A new DataSource factory.
      */
     private DataSource.Factory buildDataSourceFactory(boolean useBandwidthMeter) {
-        return DataSourceUtil.getDefaultDataSourceFactory(this.themedReactContext, useBandwidthMeter ? BANDWIDTH_METER : null, requestHeaders);
+        return DataSourceUtil.getDefaultDataSourceFactory(this.themedReactContext, useBandwidthMeter ? BANDWIDTH_METER : null, requestHeaders, cookies);
     }
 
     // AudioManager.OnAudioFocusChangeListener implementation
@@ -697,7 +701,7 @@ class ReactExoplayerView extends FrameLayout implements
 
     // ReactExoplayerViewManager public api
 
-    public void setSrc(final Uri uri, final String extension, Map<String, String> headers) {
+    public void setSrc(final Uri uri, final String extension, Map<String, String> headers, List<Cookie> cookies) {
         if (uri != null) {
             boolean isOriginalSourceNull = srcUri == null;
             boolean isSourceEqual = uri.equals(srcUri);
@@ -705,7 +709,8 @@ class ReactExoplayerView extends FrameLayout implements
             this.srcUri = uri;
             this.extension = extension;
             this.requestHeaders = headers;
-            this.mediaDataSourceFactory = DataSourceUtil.getDefaultDataSourceFactory(this.themedReactContext, BANDWIDTH_METER, this.requestHeaders);
+            this.cookies = cookies;
+            this.mediaDataSourceFactory = DataSourceUtil.getDefaultDataSourceFactory(this.themedReactContext, BANDWIDTH_METER, this.requestHeaders, this.cookies);
 
             if (!isOriginalSourceNull && !isSourceEqual) {
                 reloadSource();

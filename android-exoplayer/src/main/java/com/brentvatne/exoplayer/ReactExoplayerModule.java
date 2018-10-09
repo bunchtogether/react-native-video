@@ -64,8 +64,11 @@ public class ReactExoplayerModule extends ReactContextBaseJavaModule {
                 if (line.charAt(0) == '#')
                     continue;
                 //Log.d("ReactExoplayerModule", "fetching: " + new URL(new URL(url), line).toString());
-                getResponse(httpClient, new URL(new URL(url), line), cookieList);
+                ResponseBody pieceBody = getResponse(httpClient, new URL(new URL(url), line), cookieList).body();
+                if (pieceBody != null)
+                    pieceBody.close();
             }
+            body.close();
         } catch (IOException e) {
             promise.resolve(cacheKey);
             //promise.reject(cacheKey, "unable to prefetch", e);

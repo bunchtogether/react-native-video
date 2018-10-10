@@ -18,7 +18,7 @@ BLOCK(); \
 @property (nonatomic, strong) AVAssetDownloadURLSession *session;
 @property (nonatomic, strong) RCTVideoDownloader *delegate;
 @property (nonatomic, strong) NSURL *url;
-@property (nonatomic, strong) AVAssetDownloadTask *task;
+@property (nonatomic, strong) AVAggregateAssetDownloadTask *task;
 @property (nonatomic, copy) NSArray *cookies;
 @property (nonatomic, assign) int attempt;
 @end
@@ -51,16 +51,20 @@ BLOCK(); \
 - (void)resume {
     AVURLAsset *asset = [AVURLAsset URLAssetWithURL:self.url options:@{AVURLAssetHTTPCookiesKey : self.cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
     asset.resourceLoader.preloadsEligibleContentKeys = YES;
-    self.task = [self.session assetDownloadTaskWithURLAsset:asset
-                                                 assetTitle:@"Video Download"
-                                           assetArtworkData:nil
-                                                    options:nil];
+    NSArray *preferredMediaSelections = [NSArray arrayWithObjects:asset.preferredMediaSelection,nil];
+    self.task = [self.session aggregateAssetDownloadTaskWithURLAsset:asset
+                                                      mediaSelections:preferredMediaSelections
+                                                           assetTitle:@"Video Download"
+                                                     assetArtworkData:nil
+                                                              options:nil];
+    
     if (!self.task && self.session.configuration.identifier) {
         for (NSUInteger attempts = 0; !self.task && attempts < 3; attempts++) {
-            self.task = [self.session assetDownloadTaskWithURLAsset:asset
-                                                         assetTitle:@"Video Download"
-                                                   assetArtworkData:nil
-                                                            options:nil];
+            self.task = [self.session aggregateAssetDownloadTaskWithURLAsset:asset
+                                                             mediaSelections:preferredMediaSelections
+                                                                  assetTitle:@"Video Download"
+                                                            assetArtworkData:nil
+                                                                     options:nil];
         }
     }
     self.task.taskDescription = self.cacheKey;
@@ -96,16 +100,19 @@ BLOCK(); \
     }
     AVURLAsset *asset = [AVURLAsset URLAssetWithURL:self.url options:@{AVURLAssetHTTPCookiesKey : self.cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
     asset.resourceLoader.preloadsEligibleContentKeys = YES;
-    self.task = [self.session assetDownloadTaskWithURLAsset:asset
-                                                 assetTitle:@"Video Download"
-                                           assetArtworkData:nil
-                                                    options:nil];
+    NSArray *preferredMediaSelections = [NSArray arrayWithObjects:asset.preferredMediaSelection,nil];
+    self.task = [self.session aggregateAssetDownloadTaskWithURLAsset:asset
+                                                     mediaSelections:preferredMediaSelections
+                                                          assetTitle:@"Video Download"
+                                                    assetArtworkData:nil
+                                                             options:nil];
     if (!self.task && self.session.configuration.identifier) {
         for (NSUInteger attempts = 0; !self.task && attempts < 3; attempts++) {
-            self.task = [self.session assetDownloadTaskWithURLAsset:asset
-                                                         assetTitle:@"Video Download"
-                                                   assetArtworkData:nil
-                                                            options:nil];
+            self.task = [self.session aggregateAssetDownloadTaskWithURLAsset:asset
+                                                             mediaSelections:preferredMediaSelections
+                                                                  assetTitle:@"Video Download"
+                                                            assetArtworkData:nil
+                                                                     options:nil];
         }
     }
     self.task.taskDescription = self.cacheKey;
@@ -129,14 +136,16 @@ BLOCK(); \
 }
 
 - (void)completeOperation {
-    [self willChangeValueForKey:@"isFinished"];
-    [self willChangeValueForKey:@"isExecuting"];
-    
-    _executing = NO;
-    _finished = YES;
-    
-    [self didChangeValueForKey:@"isExecuting"];
-    [self didChangeValueForKey:@"isFinished"];
+    if(_executing && !_finished) {
+        [self willChangeValueForKey:@"isFinished"];
+        [self willChangeValueForKey:@"isExecuting"];
+        
+        _executing = NO;
+        _finished = YES;
+        
+        [self didChangeValueForKey:@"isExecuting"];
+        [self didChangeValueForKey:@"isFinished"];
+    }
 }
 
 @end

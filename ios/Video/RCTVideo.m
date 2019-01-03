@@ -14,6 +14,7 @@ static NSString *const playbackBufferEmptyKeyPath = @"playbackBufferEmpty";
 static NSString *const readyForDisplayKeyPath = @"readyForDisplay";
 static NSString *const playbackRate = @"rate";
 static NSString *const timedMetadata = @"timedMetadata";
+static NSString *const externalPlaybackActive = @"externalPlaybackActive";
 
 static int const RCTVideoUnset = -1;
 
@@ -27,19 +28,21 @@ static int const RCTVideoUnset = -1;
 {
   AVPlayer *_player;
   AVPlayerItem *_playerItem;
+  NSDictionary *_source;
   BOOL _playerItemObserversSet;
   BOOL _playerBufferEmpty;
   AVPlayerLayer *_playerLayer;
   BOOL _playerLayerObserverSet;
-  AVPlayerViewController *_playerViewController;
+  RCTVideoPlayerViewController *_playerViewController;
   NSURL *_videoURL;
   dispatch_queue_t _queue;
     
   /* Required to publish events */
   RCTEventDispatcher *_eventDispatcher;
   BOOL _playbackRateObserverRegistered;
+  BOOL _isExternalPlaybackActiveObserverRegistered;
   BOOL _videoLoadStarted;
-
+  
   bool _pendingSeek;
   float _pendingSeekTime;
   float _lastSeekTime;
@@ -52,6 +55,8 @@ static int const RCTVideoUnset = -1;
   /* Keep track of any modifiers, need to be applied after each play */
   float _volume;
   float _rate;
+  float _maxBitRate;
+
   BOOL _muted;
   BOOL _paused;
   BOOL _repeat;
@@ -64,7 +69,12 @@ static int const RCTVideoUnset = -1;
   BOOL _playWhenInactive;
   NSString * _ignoreSilentSwitch;
   NSString * _resizeMode;
+  BOOL _fullscreen;
+  BOOL _fullscreenAutorotate;
+  NSString * _fullscreenOrientation;
   BOOL _fullscreenPlayerPresented;
+  NSString *_filterName;
+  BOOL _filterEnabled;
   UIViewController * _presentingViewController;
 }
 
@@ -74,10 +84,13 @@ static int const RCTVideoUnset = -1;
     _eventDispatcher = eventDispatcher;
     
     _playbackRateObserverRegistered = NO;
+    _isExternalPlaybackActiveObserverRegistered = NO;
     _playbackStalled = NO;
     _rate = 1.0;
     _volume = 1.0;
     _resizeMode = @"AVLayerVideoGravityResizeAspectFill";
+    _fullscreenAutorotate = YES;
+    _fullscreenOrientation = @"all";
     _pendingSeek = false;
     _pendingSeekTime = 0.0f;
     _lastSeekTime = 0.0f;
@@ -104,7 +117,7 @@ static int const RCTVideoUnset = -1;
                                              selector:@selector(applicationWillEnterForeground:)
                                                  name:UIApplicationWillEnterForegroundNotification
                                                object:nil];
-
+    
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(audioRouteChanged:)
                                                  name:AVAudioSessionRouteChangeNotification
@@ -114,15 +127,17 @@ static int const RCTVideoUnset = -1;
   return self;
 }
 
-- (AVPlayerViewController*)createPlayerViewController:(AVPlayer*)player withPlayerItem:(AVPlayerItem*)playerItem {
-    RCTVideoPlayerViewController* playerLayer= [[RCTVideoPlayerViewController alloc] init];
-    playerLayer.showsPlaybackControls = YES;
-    playerLayer.rctDelegate = self;
-    playerLayer.view.frame = self.bounds;
-    playerLayer.player = player;
-    playerLayer.player.automaticallyWaitsToMinimizeStalling = NO;
-    playerLayer.view.frame = self.bounds;
-    return playerLayer;
+- (RCTVideoPlayerViewController*)createPlayerViewController:(AVPlayer*)player
+                                             withPlayerItem:(AVPlayerItem*)playerItem {
+    RCTVideoPlayerViewController* viewController = [[RCTVideoPlayerViewController alloc] init];
+    viewController.showsPlaybackControls = YES;
+    viewController.rctDelegate = self;
+    viewController.preferredOrientation = _fullscreenOrientation;
+    
+    viewController.view.frame = self.bounds;
+    viewController.player = player;
+    viewController.view.frame = self.bounds;
+    return viewController;
 }
 
 /* ---------------------------------------------------------
@@ -216,7 +231,7 @@ static int const RCTVideoUnset = -1;
     NSNumber *reason = [[notification userInfo] objectForKey:AVAudioSessionRouteChangeReasonKey];
     NSNumber *previousRoute = [[notification userInfo] objectForKey:AVAudioSessionRouteChangePreviousRouteKey];
     if (reason.unsignedIntValue == AVAudioSessionRouteChangeReasonOldDeviceUnavailable) {
-        self.onVideoAudioBecomingNoisy(@{@"target": self.reactTag});
+      self.onVideoAudioBecomingNoisy(@{@"target": self.reactTag});
     }
 }
 
@@ -316,6 +331,7 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
 
 - (void)setSrc:(NSDictionary *)source
 {
+  _source = source;
   [self removePlayerLayer];
   [self removePlayerTimeObserver];
   [self removePlayerItemObservers];
@@ -377,7 +393,11 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
   dispatch_async(_queue, ^{
     
     if (_textTracks) {
+      
+      _allowsExternalPlayback = NO;
+      
       // sideload text tracks
+      
       AVMutableComposition *mixComposition = [[AVMutableComposition alloc] init];
       
       AVAssetTrack *videoAsset = [asset tracksWithMediaType:AVMediaTypeVideo].firstObject;
@@ -450,7 +470,7 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
                                     @"uri": uri ? uri : [NSNull null],
                                     @"type": type ? type : [NSNull null],
                                     @"isNetwork": [NSNumber numberWithBool:(bool)[source objectForKey:@"isNetwork"]]},
-                                    @"target": self.reactTag
+                                @"target": self.reactTag
                                 });
         
       }
@@ -459,12 +479,13 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
   });
 }
 
+
 - (NSURL*) urlFilePath:(NSString*) filepath {
   if ([filepath containsString:@"file://"]) {
     return [NSURL URLWithString:filepath];
   }
   
-  // code to support local caching
+  // if no file found, check if the file exists in the Document directory
   NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
   NSString* relativeFilePath = [filepath lastPathComponent];
   // the file may be multiple levels below the documents directory
@@ -479,6 +500,7 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
   }
   return nil;
 }
+
 
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context
 {
@@ -599,6 +621,12 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
         _playbackStalled = NO;
       }
     }
+    else if([keyPath isEqualToString:externalPlaybackActive]) {
+        if(self.onVideoExternalPlaybackChange) {
+          self.onVideoExternalPlaybackChange(@{@"isExternalPlaybackActive": [NSNumber numberWithBool:_player.isExternalPlaybackActive],
+                                          @"target": self.reactTag});
+        }
+    }
   } else {
     [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
   }
@@ -614,7 +642,7 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
                                            selector:@selector(playerItemDidReachEnd:)
                                                name:AVPlayerItemDidPlayToEndTimeNotification
                                              object:[_player currentItem]];
-
+  
   [[NSNotificationCenter defaultCenter] removeObserver:self
                                                   name:AVPlayerItemPlaybackStalledNotification
                                                 object:nil];
@@ -622,6 +650,26 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
                                            selector:@selector(playbackStalled:)
                                                name:AVPlayerItemPlaybackStalledNotification
                                              object:nil];
+
+  [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                  name:AVPlayerItemNewAccessLogEntryNotification
+                                                object:nil];
+  [[NSNotificationCenter defaultCenter] addObserver:self
+                                           selector:@selector(handleAVPlayerAccess:)
+                                               name:AVPlayerItemNewAccessLogEntryNotification
+                                             object:nil];
+
+}
+
+- (void)handleAVPlayerAccess:(NSNotification *)notification {
+    AVPlayerItemAccessLog *accessLog = [((AVPlayerItem *)notification.object) accessLog];
+    AVPlayerItemAccessLogEvent *lastEvent = accessLog.events.lastObject;
+    
+    /* TODO: get this working
+    if (self.onBandwidthUpdate) {
+        self.onBandwidthUpdate(@{@"bitrate": [NSNumber numberWithFloat:lastEvent.observedBitrate]});
+    }
+    */
 }
 
 - (void)playbackStalled:(NSNotification *)notification
@@ -777,6 +825,12 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
   [self applyModifiers];
 }
 
+- (void)setMaxBitRate:(float) maxBitRate {
+  _maxBitRate = maxBitRate;
+  _playerItem.preferredPeakBitRate = maxBitRate;
+}
+
+
 - (void)applyModifiers
 {
   
@@ -790,7 +844,8 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
     }
     [self setPaused:_paused];
   }
-
+  
+  [self setMaxBitRate:_maxBitRate];
   [self setSelectedAudioTrack:_selectedAudioTrack];
   [self setSelectedTextTrack:_selectedTextTrack];
   [self setResizeMode:_resizeMode];
@@ -810,40 +865,40 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
     AVMediaSelectionGroup *group = [_player.currentItem.asset
                                     mediaSelectionGroupForMediaCharacteristic:characteristic];
     AVMediaSelectionOption *mediaOption;
-    
+  
     if ([type isEqualToString:@"disabled"]) {
-        // Do nothing. We want to ensure option is nil
+      // Do nothing. We want to ensure option is nil
     } else if ([type isEqualToString:@"language"] || [type isEqualToString:@"title"]) {
         NSString *value = criteria[@"value"];
         for (int i = 0; i < group.options.count; ++i) {
             AVMediaSelectionOption *currentOption = [group.options objectAtIndex:i];
             NSString *optionValue;
             if ([type isEqualToString:@"language"]) {
-                optionValue = [currentOption extendedLanguageTag];
+              optionValue = [currentOption extendedLanguageTag];
             } else {
-                optionValue = [[[currentOption commonMetadata]
-                                valueForKey:@"value"]
-                               objectAtIndex:0];
+              optionValue = [[[currentOption commonMetadata]
+                              valueForKey:@"value"]
+                             objectAtIndex:0];
             }
             if ([value isEqualToString:optionValue]) {
-                mediaOption = currentOption;
-                break;
+              mediaOption = currentOption;
+              break;
             }
-        }
-        //} else if ([type isEqualToString:@"default"]) {
-        //  option = group.defaultOption; */
+      }
+      //} else if ([type isEqualToString:@"default"]) {
+      //  option = group.defaultOption; */
     } else if ([type isEqualToString:@"index"]) {
         if ([criteria[@"value"] isKindOfClass:[NSNumber class]]) {
-            int index = [criteria[@"value"] intValue];
-            if (group.options.count > index) {
-                mediaOption = [group.options objectAtIndex:index];
-            }
+          int index = [criteria[@"value"] intValue];
+          if (group.options.count > index) {
+            mediaOption = [group.options objectAtIndex:index];
+          }
         }
     } else { // default. invalid type or "system"
-        [_player.currentItem selectMediaOptionAutomaticallyInMediaSelectionGroup:group];
-        return;
+      [_player.currentItem selectMediaOptionAutomaticallyInMediaSelectionGroup:group];
+      return;
     }
-    
+  
     // If a match isn't found, option will be nil and text tracks will be disabled
     [_player.currentItem selectMediaOption:mediaOption inMediaSelectionGroup:group];
 }
@@ -851,7 +906,7 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
 - (void)setSelectedAudioTrack:(NSDictionary *)selectedAudioTrack {
     _selectedAudioTrack = selectedAudioTrack;
     [self setMediaSelectionTrackForCharacteristic:AVMediaCharacteristicAudible
-                                        withCriteria:_selectedAudioTrack];
+                                     withCriteria:_selectedAudioTrack];
 }
 
 - (void)setSelectedTextTrack:(NSDictionary *)selectedTextTrack {
@@ -923,7 +978,7 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
       }
     }
   }
-    
+  
   for (int i = firstTextIndex; i < _player.currentItem.tracks.count; ++i) {
     BOOL isEnabled = NO;
     if (selectedTrackIndex != RCTVideoUnset) {
@@ -979,7 +1034,7 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
 - (void)setTextTracks:(NSArray*) textTracks;
 {
   _textTracks = textTracks;
-
+  
   // in case textTracks was set after selectedTextTrack
   if (_selectedTextTrack) [self setSelectedTextTrack:_selectedTextTrack];
 }
@@ -994,14 +1049,14 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
         NSString *title = @"";
         NSArray *values = [[currentOption commonMetadata] valueForKey:@"value"];
         if (values.count > 0) {
-            title = [values objectAtIndex:0];
+          title = [values objectAtIndex:0];
         }
         NSString *language = [currentOption extendedLanguageTag] ? [currentOption extendedLanguageTag] : @"";
         NSDictionary *audioTrack = @{
-                                    @"index": [NSNumber numberWithInt:i],
-                                    @"title": title,
-                                    @"language": language
-                                    };
+                                     @"index": [NSNumber numberWithInt:i],
+                                     @"title": title,
+                                     @"language": language
+                                     };
         [audioTracks addObject:audioTrack];
     }
     return audioTracks;
@@ -1039,9 +1094,8 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
   return _fullscreenPlayerPresented;
 }
 
-- (void)setFullscreen:(BOOL)fullscreen
-{
-  if( fullscreen && !_fullscreenPlayerPresented )
+- (void)setFullscreen:(BOOL) fullscreen {
+  if( fullscreen && !_fullscreenPlayerPresented && _player )
   {
     // Ensure player view controller is not null
     if( !_playerViewController )
@@ -1071,6 +1125,7 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
       [viewController presentViewController:_playerViewController animated:true completion:^{
         _playerViewController.showsPlaybackControls = YES;
         _fullscreenPlayerPresented = fullscreen;
+        _playerViewController.autorotate = _fullscreenAutorotate;
         if(self.onVideoFullscreenPlayerDidPresent) {
           self.onVideoFullscreenPlayerDidPresent(@{@"target": self.reactTag});
         }
@@ -1083,6 +1138,20 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
     [_presentingViewController dismissViewControllerAnimated:true completion:^{
       [self videoPlayerViewControllerDidDismiss:_playerViewController];
     }];
+  }
+}
+
+- (void)setFullscreenAutorotate:(BOOL)autorotate {
+  _fullscreenAutorotate = autorotate;
+  if (_fullscreenPlayerPresented) {
+    _playerViewController.autorotate = autorotate;
+  }
+}
+
+- (void)setFullscreenOrientation:(NSString *)orientation {
+  _fullscreenOrientation = orientation;
+  if (_fullscreenPlayerPresented) {
+    _playerViewController.preferredOrientation = orientation;
   }
 }
 
@@ -1139,7 +1208,7 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
 - (void)setProgressUpdateInterval:(float)progressUpdateInterval
 {
   _progressUpdateInterval = progressUpdateInterval;
-
+  
   if (_timeObserver) {
     [self removePlayerTimeObserver];
     [self addPlayerTimeObserver];
@@ -1178,6 +1247,36 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
       self.onVideoFullscreenPlayerDidDismiss(@{@"target": self.reactTag});
     }
   }
+}
+
+- (void)setFilter:(NSString *)filterName {
+    _filterName = filterName;
+
+    if (!_filterEnabled) {
+        return;
+    } else if ([[_source objectForKey:@"uri"] rangeOfString:@"m3u8"].location != NSNotFound) {
+        return; // filters don't work for HLS... return
+    } else if (!_playerItem.asset) {
+        return;
+    }
+    
+    CIFilter *filter = [CIFilter filterWithName:filterName];
+    _playerItem.videoComposition = [AVVideoComposition
+                                    videoCompositionWithAsset:_playerItem.asset
+                                    applyingCIFiltersWithHandler:^(AVAsynchronousCIImageFilteringRequest *_Nonnull request) {
+        if (filter == nil) {
+            [request finishWithImage:request.sourceImage context:nil];
+        } else {
+            CIImage *image = request.sourceImage.imageByClampingToExtent;
+            [filter setValue:image forKey:kCIInputImageKey];
+            CIImage *output = [filter.outputImage imageByCroppingToRect:request.sourceImage.extent];
+            [request finishWithImage:output context:nil];
+        }
+    }];
+}
+
+- (void)setFilterEnabled:(BOOL)filterEnabled {
+  _filterEnabled = filterEnabled;
 }
 
 #pragma mark - React View Management
@@ -1246,6 +1345,10 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
     [_player removeObserver:self forKeyPath:playbackRate context:nil];
     _playbackRateObserverRegistered = NO;
   }
+  if (_isExternalPlaybackActiveObserverRegistered) {
+    [_player removeObserver:self forKeyPath:externalPlaybackActive context:nil];
+    _isExternalPlaybackActiveObserverRegistered = NO;
+  }
   _player = nil;
   
   [self removePlayerLayer];
@@ -1260,6 +1363,80 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
   [[NSNotificationCenter defaultCenter] removeObserver:self];
   
   [super removeFromSuperview];
+}
+
+#pragma mark - Export
+
+- (void)save:(NSDictionary *)options resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
+
+    AVAsset *asset = _playerItem.asset;
+
+    if (asset != nil) {
+
+        AVAssetExportSession *exportSession = [AVAssetExportSession
+                exportSessionWithAsset:asset presetName:AVAssetExportPresetHighestQuality];
+
+        if (exportSession != nil) {
+            NSString *path = nil;
+            NSArray *array = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES);
+            path = [self generatePathInDirectory:[[self cacheDirectoryPath] stringByAppendingPathComponent:@"Videos"]
+                                   withExtension:@".mp4"];
+            NSURL *url = [NSURL fileURLWithPath:path];
+            exportSession.outputFileType = AVFileTypeMPEG4;
+            exportSession.outputURL = url;
+            exportSession.videoComposition = _playerItem.videoComposition;
+            exportSession.shouldOptimizeForNetworkUse = true;
+            [exportSession exportAsynchronouslyWithCompletionHandler:^{
+
+                switch ([exportSession status]) {
+                    case AVAssetExportSessionStatusFailed:
+                        reject(@"ERROR_COULD_NOT_EXPORT_VIDEO", @"Could not export video", exportSession.error);
+                        break;
+                    case AVAssetExportSessionStatusCancelled:
+                        reject(@"ERROR_EXPORT_SESSION_CANCELLED", @"Export session was cancelled", exportSession.error);
+                        break;
+                    default:
+                        resolve(@{@"uri": url.absoluteString});
+                        break;
+                }
+
+            }];
+
+        } else {
+
+            reject(@"ERROR_COULD_NOT_CREATE_EXPORT_SESSION", @"Could not create export session", nil);
+
+        }
+
+    } else {
+
+        reject(@"ERROR_ASSET_NIL", @"Asset is nil", nil);
+
+    }
+}
+
+- (BOOL)ensureDirExistsWithPath:(NSString *)path {
+    BOOL isDir = NO;
+    NSError *error;
+    BOOL exists = [[NSFileManager defaultManager] fileExistsAtPath:path isDirectory:&isDir];
+    if (!(exists && isDir)) {
+        [[NSFileManager defaultManager] createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:&error];
+        if (error) {
+            return NO;
+        }
+    }
+    return YES;
+}
+
+- (NSString *)generatePathInDirectory:(NSString *)directory withExtension:(NSString *)extension {
+    NSString *fileName = [[[NSUUID UUID] UUIDString] stringByAppendingString:extension];
+    [self ensureDirExistsWithPath:directory];
+    return [directory stringByAppendingPathComponent:fileName];
+}
+
+- (NSString *)cacheDirectoryPath {
+    NSArray *array = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES);
+    return array[0];
 }
 
 @end

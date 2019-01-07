@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		72CDA5B321DFC7D200360FA0 /* RCTVideoDownloaderDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 72CDA5B221DFC7D200360FA0 /* RCTVideoDownloaderDelegate.m */; };
 		72D234962146F36600635555 /* RCTVideoPlayerViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 72D234892146F36600635555 /* RCTVideoPlayerViewController.m */; };
 		72D234972146F36600635555 /* RCTVideoDownloader.m in Sources */ = {isa = PBXBuildFile; fileRef = 72D2348A2146F36600635555 /* RCTVideoDownloader.m */; };
 		72D234982146F36600635555 /* RCTVideoManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 72D2348D2146F36600635555 /* RCTVideoManager.m */; };
@@ -30,6 +31,8 @@
 
 /* Begin PBXFileReference section */
 		134814201AA4EA6300B7C361 /* libRCTVideo.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libRCTVideo.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		72CDA5B221DFC7D200360FA0 /* RCTVideoDownloaderDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = RCTVideoDownloaderDelegate.m; path = Video/RCTVideoDownloaderDelegate.m; sourceTree = "<group>"; };
+		72CDA5B421DFC7E300360FA0 /* RCTVideoDownloaderDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RCTVideoDownloaderDelegate.h; sourceTree = "<group>"; };
 		72D234872146F36600635555 /* RCTVideo.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = RCTVideo.h; path = Video/RCTVideo.h; sourceTree = "<group>"; };
 		72D234882146F36600635555 /* RCTVideoPlayerViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = RCTVideoPlayerViewController.h; path = Video/RCTVideoPlayerViewController.h; sourceTree = "<group>"; };
 		72D234892146F36600635555 /* RCTVideoPlayerViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = RCTVideoPlayerViewController.m; path = Video/RCTVideoPlayerViewController.m; sourceTree = "<group>"; };
@@ -76,6 +79,8 @@
 		58B511D21A9E6C8500147676 = {
 			isa = PBXGroup;
 			children = (
+				72CDA5B421DFC7E300360FA0 /* RCTVideoDownloaderDelegate.h */,
+				72CDA5B221DFC7D200360FA0 /* RCTVideoDownloaderDelegate.m */,
 				72D2348C2146F36600635555 /* BackgroundDownloadAppDelegate.h */,
 				72D2348E2146F36600635555 /* BackgroundDownloadAppDelegate.m */,
 				72D2348B2146F36600635555 /* QueuedDownloadSession.h */,
@@ -153,6 +158,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				72D2349B2146F36600635555 /* UIView+FindUIViewController.m in Sources */,
+				72CDA5B321DFC7D200360FA0 /* RCTVideoDownloaderDelegate.m in Sources */,
 				72D234972146F36600635555 /* RCTVideoDownloader.m in Sources */,
 				72D2349A2146F36600635555 /* RCTVideo.m in Sources */,
 				72D234982146F36600635555 /* RCTVideoManager.m in Sources */,

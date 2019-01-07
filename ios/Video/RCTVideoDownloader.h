@@ -25,6 +25,5 @@
 
 - (BOOL)hasCachedAsset:(NSString *)cacheKey;
 - (void)clearCachedAsset:(NSString *)cacheKey;
-- (void)invalidate;
 
 @end

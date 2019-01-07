@@ -6,6 +6,7 @@
 #import "RCTVideoDownloader.h"
 #import "QueuedDownloadSession.h"
 #import "BackgroundDownloadAppDelegate.h"
+#import "RCTVideoDownloaderDelegate.h"
 
 @interface MediaSelections : NSObject
 @property (nonatomic, nullable) AVMediaSelectionGroup* group;
@@ -27,6 +28,7 @@
 
 @interface RCTVideoDownloader ()
 
+@property (nonatomic, strong) RCTVideoDownloaderDelegate *downloaderDelegate;
 @property (nonatomic, strong) NSMutableDictionary *mediaSelectionTasks;
 @property (nonatomic, strong) NSMutableDictionary *tasks;
 @property (nonatomic, strong) NSMutableDictionary *validatedAssets;
@@ -35,7 +37,6 @@
 @property (nonatomic, strong) NSMutableSet *cacheKeys;
 @property (nonatomic, assign) BOOL suspended;
 @property (nonatomic, strong) dispatch_queue_t queue;
-
 @end
 
 @implementation RCTVideoDownloader
@@ -44,6 +45,7 @@
 {
   self = [super init];
   if (self) {
+    self.downloaderDelegate = [RCTVideoDownloaderDelegate sharedVideoDownloaderDelegate];
     self.mediaSelectionTasks = [[NSMutableDictionary alloc] init];
     self.tasks = [[NSMutableDictionary alloc] init];
     self.validatedAssets = [[NSMutableDictionary alloc] init];
@@ -121,6 +123,8 @@
       return NO;
     } else if(location) {
       AVURLAsset *asset = [AVURLAsset URLAssetWithURL:location options:@{AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
+      [asset.resourceLoader setDelegate:self.downloaderDelegate queue:dispatch_get_main_queue()];
+      asset.resourceLoader.preloadsEligibleContentKeys = YES;
       AVAssetCache* assetCache = asset.assetCache;
       if (assetCache) {
         return YES;
@@ -197,6 +201,8 @@
       NSLog(@"VideoDownloader: Cached asset %@ with cache key %@ is stale", path, cacheKey);
     } else if(location) {
       AVURLAsset *asset = [AVURLAsset URLAssetWithURL:location options:@{AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
+      [asset.resourceLoader setDelegate:self.downloaderDelegate queue:dispatch_get_main_queue()];
+      asset.resourceLoader.preloadsEligibleContentKeys = YES;
       AVAssetCache* assetCache = asset.assetCache;
       if (assetCache) {
         return asset;
@@ -218,14 +224,15 @@
 }
 
 - (AVAggregateAssetDownloadTask *)getNewTask:(NSURL *)url path:(NSString *)path cacheKey:(NSString *)cacheKey cookies:(NSArray *)cookies {
-  AVURLAsset *asset = [AVURLAsset URLAssetWithURL:url options:@{AVURLAssetHTTPCookiesKey : cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
+  AVURLAsset *asset = [AVURLAsset URLAssetWithURL:url options:@{AVURLAssetHTTPCookiesKey:cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
+  [asset.resourceLoader setDelegate:self.downloaderDelegate queue:dispatch_get_main_queue()];
   asset.resourceLoader.preloadsEligibleContentKeys = YES;
   NSArray *preferredMediaSelections = [NSArray arrayWithObjects:asset.preferredMediaSelection,nil];
   AVAggregateAssetDownloadTask *task = [self.session aggregateAssetDownloadTaskWithURLAsset:asset
-                                                          mediaSelections:preferredMediaSelections
-                                                               assetTitle:@"Video Download"
-                                                         assetArtworkData:nil
-                                                                  options:nil];
+                                                                            mediaSelections:preferredMediaSelections
+                                                                                 assetTitle:@"Video Download"
+                                                                           assetArtworkData:nil
+                                                                                    options:nil];
   task.taskDescription = cacheKey;
   [task resume];
   @synchronized(self.tasks) {
@@ -235,8 +242,18 @@
   return task;
 }
 
-- (void)getAsset:(NSURL *)url cacheKey:(NSString *)cacheKey cookies:(NSArray *)cookies completion:(void (^)(AVURLAsset *asset, NSError *))completion {
+- (void)getAsset:(NSURL *)originalUrl cacheKey:(NSString *)cacheKey cookies:(NSArray *)cookies completion:(void (^)(AVURLAsset *asset, NSError *))completion {
   dispatch_async(self.queue, ^{
+    NSURL *url = originalUrl;
+    NSURLComponents *urlComponents = [NSURLComponents componentsWithURL:originalUrl resolvingAgainstBaseURL:YES];
+    if([urlComponents.path containsString:@".m3u8"]) {
+      if([urlComponents.scheme isEqualToString:@"https"]) {
+        urlComponents.scheme = @"rctvideohttps";
+      } else if([urlComponents.scheme isEqualToString:@"http"]) {
+        urlComponents.scheme = @"rctvideohttp";
+      }
+      url = urlComponents.URL;
+    }
     NSString *path = url.path;
     AVURLAsset *validatedAsset;
     @synchronized(self.validatedAssets) {
@@ -278,6 +295,7 @@
       }];
       return;
     }
+    
     AVURLAsset *bookmarkedAsset = [self getBookmarkedAsset:path cacheKey:cacheKey];
     if(bookmarkedAsset) {
       [self checkAsset:bookmarkedAsset cacheKey:cacheKey completion:^(AVURLAsset *asset, NSError *error){
@@ -291,6 +309,7 @@
       }];
       return;
     }
+    
     AVAggregateAssetDownloadTask *task = [self getNewTask:url path:path cacheKey:cacheKey cookies:cookies];
     [self checkAsset:task.URLAsset cacheKey:cacheKey completion:completion];
   });
@@ -301,6 +320,7 @@
          cookies:(NSArray *)cookies
          resolve:(RCTPromiseResolveBlock)resolve
           reject:(RCTPromiseRejectBlock)reject {
+  
 #if !TARGET_IPHONE_SIMULATOR
   dispatch_async(self.queue, ^{
     NSURL *url = [NSURL URLWithString:uri];
@@ -314,6 +334,7 @@
   });
   
 #endif
+  
   resolve(@{@"success":@YES});
 }
 
@@ -409,6 +430,8 @@ aggregateAssetDownloadTask:(AVAggregateAssetDownloadTask *)aggregateAssetDownloa
 }
 
 @end
+
+
 
 
 

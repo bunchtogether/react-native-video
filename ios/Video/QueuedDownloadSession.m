@@ -8,6 +8,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import "QueuedDownloadSession.h"
 #import "RCTVideoDownloader.h"
+#import "RCTVideoDownloaderDelegate.h"
 
 #define QUEUED_DOWNLOAD_BLOCK(KEYPATH, BLOCK) \
 [self willChangeValueForKey:KEYPATH]; \
@@ -15,6 +16,7 @@ BLOCK(); \
 [self didChangeValueForKey:KEYPATH];
 
 @interface DownloadSessionOperation ()
+@property (nonatomic, strong) RCTVideoDownloaderDelegate *downloaderDelegate;
 @property (nonatomic, strong) AVAssetDownloadURLSession *session;
 @property (nonatomic, strong) RCTVideoDownloader *delegate;
 @property (nonatomic, strong) NSURL *url;
@@ -37,6 +39,7 @@ BLOCK(); \
         self.delegate = delegate;
         self.cookies = cookies;
         self.attempt = 1;
+        self.downloaderDelegate = [RCTVideoDownloaderDelegate sharedVideoDownloaderDelegate];
         _executing = NO;
         _finished = NO;
     }
@@ -50,6 +53,7 @@ BLOCK(); \
 
 - (void)resume {
     AVURLAsset *asset = [AVURLAsset URLAssetWithURL:self.url options:@{AVURLAssetHTTPCookiesKey : self.cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
+    [asset.resourceLoader setDelegate:self.downloaderDelegate queue:dispatch_get_main_queue()];
     asset.resourceLoader.preloadsEligibleContentKeys = YES;
     NSArray *preferredMediaSelections = [NSArray arrayWithObjects:asset.preferredMediaSelection,nil];
     self.task = [self.session aggregateAssetDownloadTaskWithURLAsset:asset
@@ -99,6 +103,7 @@ BLOCK(); \
         return;
     }
     AVURLAsset *asset = [AVURLAsset URLAssetWithURL:self.url options:@{AVURLAssetHTTPCookiesKey : self.cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
+    [asset.resourceLoader setDelegate:self.downloaderDelegate queue:dispatch_get_main_queue()];
     asset.resourceLoader.preloadsEligibleContentKeys = YES;
     NSArray *preferredMediaSelections = [NSArray arrayWithObjects:asset.preferredMediaSelection,nil];
     self.task = [self.session aggregateAssetDownloadTaskWithURLAsset:asset

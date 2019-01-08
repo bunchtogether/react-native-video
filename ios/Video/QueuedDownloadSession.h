@@ -11,7 +11,7 @@
 
 @interface DownloadSessionOperation : NSOperation
 
-- (instancetype)initWithDelegate:(RCTVideoDownloader *)delegate url:(NSURL *)url cacheKey:(NSString *)cacheKey cookies:(NSArray *)cookies;
+- (instancetype)initWithDelegate:(RCTVideoDownloader *)delegate url:(NSURL *)url cacheKey:(NSString *)cacheKey cookies:(NSArray *)cookies queue:(dispatch_queue_t)queue;
 - (void)completeOperation;
 - (void)retry;
 - (void)suspend;

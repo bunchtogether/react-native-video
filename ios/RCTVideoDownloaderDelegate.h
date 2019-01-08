@@ -11,5 +11,7 @@
 
 + (instancetype)sharedVideoDownloaderDelegate;
 
+- (void)clearCacheForUrl:(NSURL*)baseUrl;
+
 @end
 

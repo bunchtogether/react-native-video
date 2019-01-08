@@ -184,10 +184,9 @@
   }];
 }
 
-- (AVURLAsset *)getBookmarkedAsset:(NSString *)path cacheKey:(NSString *)cacheKey {
+- (AVURLAsset *)getBookmarkedAsset:(NSString *)urlString cacheKey:(NSString *)cacheKey {
   NSData *bookmarkData = [[NSUserDefaults standardUserDefaults] objectForKey:cacheKey];
   if(bookmarkData) {
-    NSLog(@"VideoDownloader: Found bookmark for cached asset %@ with cache key %@", path, cacheKey);
     NSError *error = nil;
     BOOL stale;
     NSURL *location = [NSURL URLByResolvingBookmarkData:bookmarkData
@@ -195,35 +194,37 @@
                                           relativeToURL:nil
                                     bookmarkDataIsStale:&stale
                                                   error:&error];
+    
     if(error) {
-      NSLog(@"VideoDownloader: Error getting cached asset %@ with cache key %@: %@", path, cacheKey, error);
+      NSLog(@"VideoDownloader: Error getting cached asset %@ with cache key %@: %@", urlString, cacheKey, error);
     } else if(stale) {
-      NSLog(@"VideoDownloader: Cached asset %@ with cache key %@ is stale", path, cacheKey);
+      NSLog(@"VideoDownloader: Cached asset %@ with cache key %@ is stale", urlString, cacheKey);
     } else if(location) {
       AVURLAsset *asset = [AVURLAsset URLAssetWithURL:location options:@{AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
       [asset.resourceLoader setDelegate:self.downloaderDelegate queue:dispatch_get_main_queue()];
       asset.resourceLoader.preloadsEligibleContentKeys = YES;
       AVAssetCache* assetCache = asset.assetCache;
       if (assetCache) {
+        NSLog(@"VideoDownloader: Found bookmark for cached asset %@ with cache key %@ at %@", urlString, cacheKey, [location absoluteString]);
         return asset;
       }
-      NSLog(@"VideoDownloader: Cached asset %@ with cache key %@ has no asset cache", path, cacheKey);
+      NSLog(@"VideoDownloader: Found bookmark for cached asset %@ with cache key %@ at %@, has no asset cache", urlString, cacheKey, [location absoluteString]);
     }
   }
   return nil;
 }
 
-- (AVAggregateAssetDownloadTask *)getPrefetchTask:(NSString *)cacheKey path:(NSString *)path {
+- (AVAggregateAssetDownloadTask *)getPrefetchTask:(NSString *)cacheKey urlString:(NSString *)urlString {
   for(DownloadSessionOperation *operation in self.mainOperationQueue.operations) {
     if(operation.task && [operation.cacheKey isEqualToString:cacheKey]) {
-      NSLog(@"VideoDownloader: Got prefetch task %lu for asset %@ with cache key %@", (unsigned long)operation.task.taskIdentifier, path, cacheKey);
+      NSLog(@"VideoDownloader: Got prefetch task %lu for asset %@ with cache key %@", (unsigned long)operation.task.taskIdentifier, urlString, cacheKey);
       return operation.task;
     }
   }
   return nil;
 }
 
-- (AVAggregateAssetDownloadTask *)getNewTask:(NSURL *)url path:(NSString *)path cacheKey:(NSString *)cacheKey cookies:(NSArray *)cookies {
+- (AVAggregateAssetDownloadTask *)getNewTask:(NSURL *)url urlString:(NSString *)urlString cacheKey:(NSString *)cacheKey cookies:(NSArray *)cookies {
   AVURLAsset *asset = [AVURLAsset URLAssetWithURL:url options:@{AVURLAssetHTTPCookiesKey:cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
   [asset.resourceLoader setDelegate:self.downloaderDelegate queue:dispatch_get_main_queue()];
   asset.resourceLoader.preloadsEligibleContentKeys = YES;
@@ -238,7 +239,7 @@
   @synchronized(self.tasks) {
     self.tasks[cacheKey] = task;
   }
-  NSLog(@"VideoDownloader: Got new task %lu for asset %@ with cache key %@", (unsigned long)task.taskIdentifier, path, cacheKey);
+  NSLog(@"VideoDownloader: Got new task %lu for asset %@ with cache key %@", (unsigned long)task.taskIdentifier, urlString, cacheKey);
   return task;
 }
 
@@ -254,13 +255,13 @@
       }
       url = urlComponents.URL;
     }
-    NSString *path = url.path;
+    NSString *urlString = [url absoluteString];
     AVURLAsset *validatedAsset;
     @synchronized(self.validatedAssets) {
       validatedAsset = self.validatedAssets[cacheKey];
     }
     if(validatedAsset) {
-      NSLog(@"VideoDownloader: Found validated asset %@ with cache key %@", path, cacheKey);
+      NSLog(@"VideoDownloader: Found validated asset %@ with cache key %@", urlString, cacheKey);
       completion(validatedAsset, nil);
       return;
     }
@@ -273,7 +274,7 @@
         [activeTask cancel];
         if(error) {
           [[NSUserDefaults standardUserDefaults] removeObjectForKey:cacheKey];
-          AVAggregateAssetDownloadTask *task = [self getNewTask:url path:path cacheKey:cacheKey cookies:cookies];
+          AVAggregateAssetDownloadTask *task = [self getNewTask:url urlString:urlString cacheKey:cacheKey cookies:cookies];
           [self checkAsset:task.URLAsset cacheKey:cacheKey completion:completion];
         } else {
           completion(asset, nil);
@@ -281,13 +282,13 @@
       }];
       return;
     }
-    AVAggregateAssetDownloadTask *prefetchTask = [self getPrefetchTask:cacheKey path: path];
+    AVAggregateAssetDownloadTask *prefetchTask = [self getPrefetchTask:cacheKey urlString: urlString];
     if(prefetchTask) {
       [self checkAsset:prefetchTask.URLAsset cacheKey:cacheKey completion:^(AVURLAsset *asset, NSError *error){
         [prefetchTask cancel];
         if(error) {
           [[NSUserDefaults standardUserDefaults] removeObjectForKey:cacheKey];
-          AVAggregateAssetDownloadTask *task = [self getNewTask:url path:path cacheKey:cacheKey cookies:cookies];
+          AVAggregateAssetDownloadTask *task = [self getNewTask:url urlString:urlString cacheKey:cacheKey cookies:cookies];
           [self checkAsset:task.URLAsset cacheKey:cacheKey completion:completion];
         } else {
           completion(asset, nil);
@@ -296,12 +297,12 @@
       return;
     }
     
-    AVURLAsset *bookmarkedAsset = [self getBookmarkedAsset:path cacheKey:cacheKey];
+    AVURLAsset *bookmarkedAsset = [self getBookmarkedAsset:urlString cacheKey:cacheKey];
     if(bookmarkedAsset) {
       [self checkAsset:bookmarkedAsset cacheKey:cacheKey completion:^(AVURLAsset *asset, NSError *error){
         if(error) {
           [[NSUserDefaults standardUserDefaults] removeObjectForKey:cacheKey];
-          AVAggregateAssetDownloadTask *task = [self getNewTask:url path:path cacheKey:cacheKey cookies:cookies];
+          AVAggregateAssetDownloadTask *task = [self getNewTask:url urlString:urlString cacheKey:cacheKey cookies:cookies];
           [self checkAsset:task.URLAsset cacheKey:cacheKey completion:completion];
         } else {
           completion(asset, nil);
@@ -310,7 +311,7 @@
       return;
     }
     
-    AVAggregateAssetDownloadTask *task = [self getNewTask:url path:path cacheKey:cacheKey cookies:cookies];
+    AVAggregateAssetDownloadTask *task = [self getNewTask:url urlString:urlString cacheKey:cacheKey cookies:cookies];
     [self checkAsset:task.URLAsset cacheKey:cacheKey completion:completion];
   });
 }
@@ -323,12 +324,21 @@
   
 #if !TARGET_IPHONE_SIMULATOR
   dispatch_async(self.queue, ^{
-    NSURL *url = [NSURL URLWithString:uri];
     if([self.cacheKeys containsObject: cacheKey]) {
-      NSLog(@"VideoDownloader: Redundant cache download skipped for %@", cacheKey);
+      NSLog(@"VideoDownloader: Redundant cache download skipped for %@ with cache key %@", uri, cacheKey);
     } else if(![self hasCachedAsset:cacheKey]) {
+      NSURL *url = [NSURL URLWithString:uri];
+      NSURLComponents *urlComponents = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:YES];
+      if([urlComponents.path containsString:@".m3u8"]) {
+        if([urlComponents.scheme isEqualToString:@"https"]) {
+          urlComponents.scheme = @"rctvideohttps";
+        } else if([urlComponents.scheme isEqualToString:@"http"]) {
+          urlComponents.scheme = @"rctvideohttp";
+        }
+        url = urlComponents.URL;
+      }
       [self.cacheKeys addObject: cacheKey];
-      DownloadSessionOperation *operation = [[DownloadSessionOperation alloc] initWithDelegate:self url:url cacheKey:cacheKey cookies:cookies];
+      DownloadSessionOperation *operation = [[DownloadSessionOperation alloc] initWithDelegate:self url:url cacheKey:cacheKey cookies:cookies queue:dispatch_get_main_queue()];
       [self.mainOperationQueue addOperation:operation];
     }
   });
@@ -342,10 +352,10 @@
 aggregateAssetDownloadTask:(AVAggregateAssetDownloadTask *)aggregateAssetDownloadTask
  willDownloadToURL:(NSURL *)location {
   
-  NSString* path = aggregateAssetDownloadTask.URLAsset.URL.path;
+  NSString* urlString = [aggregateAssetDownloadTask.URLAsset.URL absoluteString];
   NSString* cacheKey = aggregateAssetDownloadTask.taskDescription;
   if(!cacheKey) {
-    NSLog(@"VideoDownloader: Missing cache key for task %lu asset %@ in willDownloadToURL", (unsigned long)aggregateAssetDownloadTask.taskIdentifier, path);
+    NSLog(@"VideoDownloader: Missing cache key for task %lu asset %@ in willDownloadToURL", (unsigned long)aggregateAssetDownloadTask.taskIdentifier, urlString);
     return;
   }
   NSLog(@"VideoDownloader: Saving location for %@", cacheKey);
@@ -355,9 +365,9 @@ aggregateAssetDownloadTask:(AVAggregateAssetDownloadTask *)aggregateAssetDownloa
 -(void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
   AVAggregateAssetDownloadTask *assetDownloadTask = (AVAggregateAssetDownloadTask *)task;
   NSString* cacheKey = assetDownloadTask.taskDescription;
-  NSString* path = assetDownloadTask.URLAsset.URL.path;
+  NSString* urlString = [assetDownloadTask.URLAsset.URL absoluteString];
   if(!cacheKey) {
-    NSLog(@"VideoDownloader: Missing cache key for task %lu, asset %@ in didResolveMediaSelection", (unsigned long)task.taskIdentifier, path);
+    NSLog(@"VideoDownloader: Missing cache key for task %lu, asset %@ in didResolveMediaSelection", (unsigned long)task.taskIdentifier, urlString);
     return;
   }
   for(DownloadSessionOperation *operation in self.mainOperationQueue.operations) {
@@ -366,7 +376,9 @@ aggregateAssetDownloadTask:(AVAggregateAssetDownloadTask *)aggregateAssetDownloa
     }
   }
   if (error) {
-    NSLog(@"VideoDownloader: Download error for task %lu, with code %ld, %@ for asset %@ with cache key %@", (unsigned long)task.taskIdentifier, (long)[error code], [error localizedDescription], path, cacheKey);
+    NSLog(@"VideoDownloader: Download error for task %lu, with code %ld, %@ for asset %@ with cache key %@", (unsigned long)task.taskIdentifier, (long)[error code], [error localizedDescription], urlString, cacheKey);
+    [self.downloaderDelegate clearCacheForUrl:assetDownloadTask.URLAsset.URL];
+    [self.downloadLocationUrls removeObjectForKey:cacheKey];
     return;
   }
   NSURL *location = self.downloadLocationUrls[cacheKey];
@@ -378,13 +390,13 @@ aggregateAssetDownloadTask:(AVAggregateAssetDownloadTask *)aggregateAssetDownloa
                                                relativeToURL:nil
                                                        error:&bookmarkError];
     if(bookmarkError) {
-      NSLog(@"VideoDownloader: Bookmark error for task %lu, asset %@ with cache key %@: %@", (unsigned long)task.taskIdentifier, path, cacheKey, bookmarkError.localizedDescription);
+      NSLog(@"VideoDownloader: Bookmark error for task %lu, asset %@ with cache key %@: %@", (unsigned long)task.taskIdentifier, urlString, cacheKey, bookmarkError.localizedDescription);
       return;
     }
-    NSLog(@"VideoDownloader: Download saved for task %lu, asset %@ with cache key %@", (unsigned long)task.taskIdentifier, path, cacheKey);
+    NSLog(@"VideoDownloader: Download saved for task %lu, asset %@ with cache key %@", (unsigned long)task.taskIdentifier, urlString, cacheKey);
     [[NSUserDefaults standardUserDefaults] setObject:bookmarkData forKey:cacheKey];
   } else {
-    NSLog(@"VideoDownloader: Unable to save download for task %lu, asset %@ with cache key %@", (unsigned long)task.taskIdentifier, path, cacheKey);
+    NSLog(@"VideoDownloader: Unable to save download for task %lu, asset %@ with cache key %@", (unsigned long)task.taskIdentifier, urlString, cacheKey);
   }
 }
 

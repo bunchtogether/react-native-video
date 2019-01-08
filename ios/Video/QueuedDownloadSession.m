@@ -23,6 +23,7 @@ BLOCK(); \
 @property (nonatomic, strong) AVAggregateAssetDownloadTask *task;
 @property (nonatomic, copy) NSArray *cookies;
 @property (nonatomic, assign) int attempt;
+@property (nonatomic, strong) dispatch_queue_t queue;
 @end
 
 @implementation DownloadSessionOperation {
@@ -30,7 +31,7 @@ BLOCK(); \
     BOOL _executing;
 }
 
-- (instancetype)initWithDelegate:(RCTVideoDownloader *)delegate url:(NSURL *)url cacheKey:(NSString *)cacheKey cookies:(NSArray *)cookies {
+- (instancetype)initWithDelegate:(RCTVideoDownloader *)delegate url:(NSURL *)url cacheKey:(NSString *)cacheKey cookies:(NSArray *)cookies queue:(dispatch_queue_t)queue{
     if (self = [super init]) {
         self.suspended = NO;
         self.url = url;
@@ -40,6 +41,7 @@ BLOCK(); \
         self.cookies = cookies;
         self.attempt = 1;
         self.downloaderDelegate = [RCTVideoDownloaderDelegate sharedVideoDownloaderDelegate];
+        self.queue = queue;
         _executing = NO;
         _finished = NO;
     }
@@ -53,7 +55,7 @@ BLOCK(); \
 
 - (void)resume {
     AVURLAsset *asset = [AVURLAsset URLAssetWithURL:self.url options:@{AVURLAssetHTTPCookiesKey : self.cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
-    [asset.resourceLoader setDelegate:self.downloaderDelegate queue:dispatch_get_main_queue()];
+    [asset.resourceLoader setDelegate:self.downloaderDelegate queue:self.queue];
     asset.resourceLoader.preloadsEligibleContentKeys = YES;
     NSArray *preferredMediaSelections = [NSArray arrayWithObjects:asset.preferredMediaSelection,nil];
     self.task = [self.session aggregateAssetDownloadTaskWithURLAsset:asset
@@ -79,7 +81,7 @@ BLOCK(); \
 - (void)retry {
     [self.task cancel];
     [self performSelector:@selector(resume) withObject:self afterDelay:self.attempt * self.attempt * 30];
-    NSLog(@"Retry attempt %d for %@ starting in %d seconds", self.attempt, self.cacheKey, self.attempt * self.attempt * 30);
+    NSLog(@"VideoDownloader: Prefetch retry attempt %d for %@ starting in %d seconds", self.attempt, self.cacheKey, self.attempt * self.attempt * 30);
     self.attempt++;
 }
 
@@ -98,12 +100,12 @@ BLOCK(); \
         return;
     }
     if([self.delegate hasCachedAsset:self.cacheKey]) {
-        NSLog(@"Downloader prefetch found cached asset for %@", self.cacheKey);
+        NSLog(@"VideoDownloader: Prefetch cached asset found for %@ with cache key %@", [self.url absoluteString], self.cacheKey);
         [self completeOperation];
         return;
     }
     AVURLAsset *asset = [AVURLAsset URLAssetWithURL:self.url options:@{AVURLAssetHTTPCookiesKey : self.cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
-    [asset.resourceLoader setDelegate:self.downloaderDelegate queue:dispatch_get_main_queue()];
+    [asset.resourceLoader setDelegate:self.downloaderDelegate queue:self.queue];
     asset.resourceLoader.preloadsEligibleContentKeys = YES;
     NSArray *preferredMediaSelections = [NSArray arrayWithObjects:asset.preferredMediaSelection,nil];
     self.task = [self.session aggregateAssetDownloadTaskWithURLAsset:asset
@@ -122,7 +124,7 @@ BLOCK(); \
     }
     self.task.taskDescription = self.cacheKey;
     QUEUED_DOWNLOAD_BLOCK(@"isExecuting", ^{
-        NSLog(@"Downloader prefetch executing for %@", self.task.taskDescription);
+        NSLog(@"VideoDownloader: Prefetch executing for %@ with cache key %@", [self.url absoluteString], self.task.taskDescription);
         [self.task resume];
         _executing = YES;
     });

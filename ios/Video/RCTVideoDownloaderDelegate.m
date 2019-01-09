@@ -14,12 +14,11 @@
 @property (nonatomic, strong) NSMutableDictionary *requestMap;
 @property (nonatomic, strong) NSMutableDictionary *contentTypeMap;
 @property (nonatomic, strong) NSMutableDictionary *baseUrlMap;
+@property (nonatomic, strong) NSMutableDictionary *responseDataMap;
 @property (nonatomic, strong) NSRegularExpression *keyRegex;
+@property (nonatomic, strong) NSRegularExpression *segmentRegex;
 @property (nonatomic, strong) NSRegularExpression *playlistRegex;
 @end
-
-static NSString* LOADED = @"LOADED";
-static NSString* NOT_LOADED = @"NOT_LOADED";
 
 static NSDateFormatter* CreateDateFormatter(NSString *format) {
     NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
@@ -146,6 +145,7 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
         self.requestMap = [NSMutableDictionary dictionary];
         self.contentTypeMap = [NSMutableDictionary dictionary];
         self.baseUrlMap = [NSMutableDictionary dictionary];
+        self.responseDataMap = [NSMutableDictionary dictionary];
         NSError *regexError = NULL;
         NSRegularExpressionOptions regexOptions = NSRegularExpressionCaseInsensitive;
         NSString* keyRegexPattern = @"#EXT-X-KEY.*?URI=\"(.*?)\"";
@@ -153,6 +153,11 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
         if (regexError) {
             NSLog(@"RCTVideoDownloaderDelegate: Couldn't create key regex");
         }
+//        NSString* segmentRegexPattern = @"#EXTINF:.*?\\n(.*?)\\n";
+//        self.segmentRegex = [NSRegularExpression regularExpressionWithPattern:segmentRegexPattern options:regexOptions error:&regexError];
+//        if (regexError) {
+//            NSLog(@"RCTVideoDownloaderDelegate: Couldn't create segment regex");
+//        }
         NSString* playlistRegexPattern = @"#EXT-X-STREAM-INF:.*?\\n(.*?)\\n";
         self.playlistRegex = [NSRegularExpression regularExpressionWithPattern:playlistRegexPattern options:regexOptions error:&regexError];
         if (regexError) {
@@ -185,6 +190,7 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
     [self.requestMap removeObjectForKey:loadingRequestKey];
     [self.contentTypeMap removeObjectForKey:loadingRequestKey];
     [self.baseUrlMap removeObjectForKey:loadingRequestKey];
+    [self.responseDataMap removeObjectForKey:loadingRequestKey];
 }
 
 - (NSURLConnection *)connectionForLoadingRequest:(AVAssetResourceLoadingRequest *)loadingRequest {
@@ -271,7 +277,7 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
                             }
                         }
                     } else {
-                        NSLog(@"RCTVideoDownloaderDelegate: Invalid crypt key response type for %@", [keyRequest.URL absoluteString]);
+                        NSLog(@"RCTVideoDownloaderDelegate: Invalid key response type for %@", [keyRequest.URL absoluteString]);
                         if(completionHandler) {
                             return completionHandler(nil, nil);
                         }
@@ -279,13 +285,14 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
                 }] resume];
 }
 
-- (NSData *)transformResponseData:(NSData *)data withLoadingRequest:(AVAssetResourceLoadingRequest*)loadingRequest {
+- (NSData *)transformResponseData:(NSData *)data loadingRequest:(AVAssetResourceLoadingRequest*)loadingRequest {
     NSString* loadingRequestKey = [self getLoadingRequestKey:loadingRequest];
     NSURL* baseUrl = self.baseUrlMap[loadingRequestKey];
-    NSString* original = [NSString stringWithUTF8String:[data bytes]];
+    NSString *original = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
     if(!original) {
         return data;
     }
+    NSLog(@"%@", original);
     NSArray *keyMatches = [self.keyRegex matchesInString:original options:0 range:NSMakeRange(0, [original length])];
     NSMutableDictionary* replacements = [NSMutableDictionary dictionary];
     for (NSTextCheckingResult *keyMatch in keyMatches) {
@@ -301,6 +308,14 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
             replacements[keyUrlString] = [keyUrlComponents.URL absoluteString];
         }
     }
+//    NSArray *segmentMatches = [self.segmentRegex matchesInString:original options:0 range:NSMakeRange(0, [original length])];
+//    for (NSTextCheckingResult *segmentMatch in segmentMatches) {
+//        if(segmentMatch.numberOfRanges > 1) {
+//            NSString* segmentUrlString = [original substringWithRange:[segmentMatch rangeAtIndex:1]];
+//            NSURL* segmentUrl = [NSURL URLWithString:segmentUrlString relativeToURL:baseUrl];
+//            replacements[segmentUrlString] = [segmentUrl absoluteString];
+//        }
+//    }
     NSArray *playlistMatches = [self.playlistRegex matchesInString:original options:0 range:NSMakeRange(0, [original length])];
     for (NSTextCheckingResult *playlistMatch in playlistMatches) {
         if(playlistMatch.numberOfRanges > 1) {
@@ -378,21 +393,37 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
         self.baseUrlMap[loadingRequestKey] = baseUrl;
         NSCachedURLResponse *cachedResponse = [[NSURLCache sharedURLCache] cachedResponseForRequest:request];
         if(cachedResponse) {
-            NSLog(@"RCTVideoDownloaderDelegate: Cached response for %@", [baseUrl absoluteString]);
-            loadingRequest.contentInformationRequest.contentLength = cachedResponse.data.length;
-            loadingRequest.contentInformationRequest.contentType = @"application/x-mpegURL";
+            NSHTTPURLResponse *cachedHttpResponse = (NSHTTPURLResponse*)[cachedResponse response];
+            NSString *contentType = [cachedHttpResponse MIMEType];
+            loadingRequest.response = [cachedResponse response];
+            loadingRequest.contentInformationRequest.contentType = contentType;
             loadingRequest.contentInformationRequest.byteRangeAccessSupported = NO;
-            [loadingRequest.dataRequest respondWithData: [self transformResponseData:cachedResponse.data withLoadingRequest:loadingRequest]];
+            NSDate* renewalDate = [RCTVideoDownloaderDelegate expirationDateFromHeaders:[cachedHttpResponse allHeaderFields] withStatusCode:[cachedHttpResponse statusCode]];
+            loadingRequest.contentInformationRequest.renewalDate = renewalDate;
+            [loadingRequest.dataRequest respondWithData: [self transformResponseData:cachedResponse.data loadingRequest:loadingRequest]];
             [loadingRequest finishLoading];
             [self removeRequest:loadingRequest];
+            NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
+            [dateFormatter setDateFormat:@"yyyy-MM-dd HH:mm:ss"];
+            NSLog(@"RCTVideoDownloaderDelegate: Got cached response for %@, expires %@", [baseUrl absoluteString], [dateFormatter stringFromDate:renewalDate]);
             return YES;
         }
         NSLog(@"RCTVideoDownloaderDelegate: Loading %@", [baseUrl absoluteString]);
         NSURLConnection * connection = [[NSURLConnection alloc] initWithRequest:request delegate:self startImmediately:NO];
         self.connectionMap[loadingRequestKey] = connection;
+        self.responseDataMap[loadingRequestKey] = [NSMutableData data];
         [connection start];
         return YES;
     }
+//    NSMutableURLRequest *request = loadingRequest.request.mutableCopy;
+//    NSCachedURLResponse *cachedResponse = [[NSURLCache sharedURLCache] cachedResponseForRequest:request];
+//    if(cachedResponse){
+//        NSLog(@"RCTVideoDownloaderDelegate: Sending cached response %@", [components.URL absoluteString]);
+//        NSHTTPURLResponse *httpCacheResponse = (NSHTTPURLResponse *)cachedResponse.response;
+//        [loadingRequest setResponse:httpCacheResponse];
+//        [loadingRequest finishLoading];
+//        return YES;
+//    }
     NSLog(@"RCTVideoDownloaderDelegate: Redirecting %@", [components.URL absoluteString]);
     NSURLRequest* redirect = [NSURLRequest requestWithURL:components.URL];
     [loadingRequest setRedirect:redirect];
@@ -418,20 +449,11 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
     }
     NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse*)response;
     NSString *contentType = [httpResponse MIMEType];
-    unsigned long long contentLength = [httpResponse expectedContentLength];
-    NSString *rangeValue = [httpResponse allHeaderFields][@"Content-Range"];
-    if (rangeValue) {
-        NSArray *rangeItems = [rangeValue componentsSeparatedByString:@"/"];
-        if (rangeItems.count > 1) {
-            contentLength = [rangeItems[1] longLongValue];
-        } else {
-            contentLength = [httpResponse expectedContentLength];
-        }
-    }
+    NSMutableData *responseData = self.responseDataMap[loadingRequestKey];
+    [responseData setLength:0];
     loadingRequest.response = response;
-    loadingRequest.contentInformationRequest.contentLength = contentLength;
     loadingRequest.contentInformationRequest.contentType = contentType;
-    loadingRequest.contentInformationRequest.byteRangeAccessSupported = YES;
+    loadingRequest.contentInformationRequest.byteRangeAccessSupported = NO;
     NSDate* renewalDate = [RCTVideoDownloaderDelegate expirationDateFromHeaders:[httpResponse allHeaderFields] withStatusCode:[httpResponse statusCode]];
     loadingRequest.contentInformationRequest.renewalDate = renewalDate;
     NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
@@ -441,11 +463,17 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
 
 - (void)connection:(NSURLConnection*)connection didReceiveData:(NSData *)data {
     AVAssetResourceLoadingRequest* loadingRequest = [self loadingRequestForConnection:connection];
-    [loadingRequest.dataRequest respondWithData: [self transformResponseData:data withLoadingRequest:loadingRequest]];
+    NSString* loadingRequestKey = [self getLoadingRequestKey:loadingRequest];
+    NSMutableData *responseData = self.responseDataMap[loadingRequestKey];
+    [responseData appendData:data];
 }
 
 - (void)connectionDidFinishLoading:(NSURLConnection*)connection {
     AVAssetResourceLoadingRequest* loadingRequest = [self loadingRequestForConnection:connection];
+    NSString* loadingRequestKey = [self getLoadingRequestKey:loadingRequest];
+    NSMutableData *responseData = self.responseDataMap[loadingRequestKey];
+    loadingRequest.contentInformationRequest.contentLength = responseData.length;
+    [loadingRequest.dataRequest respondWithData: [self transformResponseData:responseData loadingRequest:loadingRequest]];
     [loadingRequest finishLoading];
     [self removeRequest:loadingRequest];
 }
@@ -461,6 +489,7 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
     loadingRequest.redirect = request;
     return request;
 }
+
 
 @end
 

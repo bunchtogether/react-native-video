@@ -6,18 +6,14 @@
 //
 
 #import <MobileCoreServices/MobileCoreServices.h>
-#import <AVFoundation/AVMediaFormat.h>
+#import <AVFoundation/AVFoundation.h>
 #import "RCTVideoDownloaderDelegate.h"
 
-@interface RCTVideoDownloaderDelegate () <NSURLConnectionDelegate, NSURLConnectionDataDelegate>
-@property (nonatomic, strong) NSMutableDictionary *connectionMap;
-@property (nonatomic, strong) NSMutableDictionary *requestMap;
-@property (nonatomic, strong) NSMutableDictionary *contentTypeMap;
-@property (nonatomic, strong) NSMutableDictionary *baseUrlMap;
-@property (nonatomic, strong) NSMutableDictionary *responseDataMap;
-@property (nonatomic, strong) NSRegularExpression *keyRegex;
-@property (nonatomic, strong) NSRegularExpression *segmentRegex;
-@property (nonatomic, strong) NSRegularExpression *playlistRegex;
+@interface RCTVideoDownloaderDelegate ()
+@property (nonatomic, strong) NSMutableData *responseData;
+@property (nonatomic, strong) NSURL *baseUrl;
+@property (nonatomic, strong) AVAssetResourceLoadingRequest *loadingRequest;
+@property (nonatomic, copy) void (^completionHandler)(NSError *);
 @end
 
 static NSDateFormatter* CreateDateFormatter(NSString *format) {
@@ -30,14 +26,248 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
 
 @implementation RCTVideoDownloaderDelegate
 
-+ (instancetype)sharedVideoDownloaderDelegate {
-    static RCTVideoDownloaderDelegate *sharedVideoDownloaderDelegate = nil;
+#pragma mark - Public
+
++ (NSRegularExpression *)keyRegex {
+    static NSRegularExpression *regex = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        sharedVideoDownloaderDelegate = [[self alloc] init];
+        regex = [NSRegularExpression
+                 regularExpressionWithPattern:@"#EXT-X-KEY.*?URI=\"(.*?)\""
+                 options:NSRegularExpressionCaseInsensitive
+                 error:nil];
     });
-    return sharedVideoDownloaderDelegate;
+    return regex;
 }
+
++ (NSRegularExpression *)playlistRegex {
+    static NSRegularExpression *regex = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        regex = [NSRegularExpression
+                 regularExpressionWithPattern:@"#EXT-X-STREAM-INF:.*?\\n(.*?)\\n"
+                 options:NSRegularExpressionCaseInsensitive
+                 error:nil];
+    });
+    return regex;
+}
+
++ (void)clearCacheForUrl:(NSURL*)baseUrl {
+    NSLog(@"VideoDownloader Delegate: Clearing cache for %@", [baseUrl absoluteString]);
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:baseUrl];
+    [[NSURLCache sharedURLCache] removeCachedResponseForRequest:request];
+    NSString *keyFilePath = [RCTVideoDownloaderDelegate getKeyFilePath:baseUrl];
+    if(!keyFilePath) {
+        NSLog(@"VideoDownloader Delegate: Unable to remove key file for %@, file reference does not exist.", [baseUrl absoluteString]);
+        return;
+    }
+    NSError *error;
+    if(![[NSFileManager defaultManager] fileExistsAtPath:keyFilePath]) {
+        NSLog(@"VideoDownloader Delegate: Unable to remove key file for %@, file does not exist.", [baseUrl absoluteString]);
+        return;
+    }
+    [[NSFileManager defaultManager] removeItemAtPath:keyFilePath error:&error];
+    if (error) {
+        NSLog(@"VideoDownloader Delegate: Error removing cached key for %@ download error: %@", [baseUrl absoluteString], error.localizedDescription);
+    }
+}
+
++ (NSMutableDictionary *)delegates {
+    static NSMutableDictionary *delegates = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        delegates = [NSMutableDictionary dictionary];
+    });
+    return delegates;
+}
+
++ (void)cacheKeys:(AVURLAsset *)asset queue:(dispatch_queue_t)queue completionHandler:(void (^)(NSError *))completionHandler {
+    NSURLComponents *components = [[NSURLComponents alloc] initWithURL:asset.URL resolvingAgainstBaseURL:YES];
+    if([components.path containsString:@".m3u8"]) {
+        __block RCTVideoDownloaderDelegate *delegate;
+        delegate = [[self alloc] initWithCompletionHandler:^(NSError *error){
+            dispatch_async(dispatch_get_main_queue(), ^{
+                delegate.completionHandler = nil;
+                if(completionHandler) {
+                    NSLog(@"VideoDownloader Delegate: Completion handler for %@", [asset.URL absoluteString]);
+                    completionHandler(error);
+                }
+            });
+        }];
+        [self delegates][[NSString stringWithFormat:@"%p", delegate]] = delegate;
+        [asset.resourceLoader setDelegate:delegate queue:queue];
+        asset.resourceLoader.preloadsEligibleContentKeys = YES;
+    } else {
+        NSLog(@"VideoDownloader Delegate: Not assigning delegate to %@", [asset.URL absoluteString]);
+        if(completionHandler) {
+            completionHandler(nil);
+        }
+    }
+}
+
+#pragma mark - Private
+
+- (void)dealloc
+{
+    NSLog(@"RCTVideoDownloader Delegate: dealloc");
+    self.responseData = nil;
+    self.completionHandler = nil;
+}
+
+- (instancetype)initWithCompletionHandler:(void (^)(NSError *))completionHandler {
+    if (self = [super init]) {
+        self.completionHandler = completionHandler;
+        self.responseData = [NSMutableData data];
+    }
+    return self;
+}
+
+- (NSData *)transformResponseData:(NSData *)data {
+    return data;
+}
+
+#pragma mark - AVAssetResourceLoaderDelegate delegate
+
+- (BOOL)resourceLoader:(AVAssetResourceLoader *)resourceLoader shouldWaitForRenewalOfRequestedResource:(AVAssetResourceRenewalRequest *)renewalRequest {
+    NSLog(@"VideoDownloader Delegate: shouldWaitForRenewalOfRequestedResource");
+    return YES;
+}
+
+- (BOOL)resourceLoader:(AVAssetResourceLoader *)resourceLoader shouldWaitForLoadingOfRequestedResource:(AVAssetResourceLoadingRequest *)loadingRequest {
+    NSURLComponents *components = [[NSURLComponents alloc] initWithURL:loadingRequest.request.URL resolvingAgainstBaseURL:YES];
+    if(![components.scheme isEqualToString:@"rctvideohttps"] && ![components.scheme isEqualToString:@"rctvideohttp"] && ![components.scheme isEqualToString:@"rctvideokeyhttps"] && ![components.scheme isEqualToString:@"rctvideokeyhttp"]) {
+        NSLog(@"VideoDownloader Delegate: Unsupported URL scheme %@ for %@", components.scheme, [components.URL absoluteString]);
+        return NO;
+    }
+    components.scheme = [components.scheme isEqualToString:@"rctvideohttps"] ? @"https" : @"http";
+    NSLog(@"VideoDownloader Delegate: Redirecting %@", [components.URL absoluteString]);
+    NSURLRequest* redirect = [NSURLRequest requestWithURL:components.URL];
+    [loadingRequest setRedirect:redirect];
+    NSHTTPURLResponse *response = [[NSHTTPURLResponse alloc] initWithURL:[redirect URL] statusCode:301 HTTPVersion:nil headerFields:nil];
+    [loadingRequest setResponse:response];
+    [loadingRequest finishLoading];
+    if(self.completionHandler) {
+        self.completionHandler(nil);
+    }
+    return YES;
+}
+
+- (void)resourceLoader:(AVAssetResourceLoader *)resourceLoader didCancelLoadingRequest:(AVAssetResourceLoadingRequest *)loadingRequest {
+    NSDictionary *userInfo = @{ NSLocalizedDescriptionKey: NSLocalizedString(@"Loading request was canceled.", nil) };
+    NSError *error = [NSError errorWithDomain:[[NSBundle mainBundle] bundleIdentifier]
+                                         code:-999
+                                     userInfo:userInfo];
+    if(self.completionHandler) {
+        self.completionHandler(error);
+    }
+}
+
+
+#pragma mark - NSURL Connection delegate
+/*
+- (void)connection:(NSURLConnection *)connection didReceiveResponse:(NSURLResponse *)response {
+    if (![response isKindOfClass:[NSHTTPURLResponse class]]) {
+        NSLog(@"VideoDownloader Delegate: Invalid response response type for %@", [self.baseUrl absoluteString]);
+    }
+    NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse*)response;
+    NSString *contentType = [httpResponse MIMEType];
+    [self.responseData setLength:0];
+    self.loadingRequest.response = response;
+    self.loadingRequest.contentInformationRequest.contentType = contentType;
+    self.loadingRequest.contentInformationRequest.byteRangeAccessSupported = NO;
+    NSDate* renewalDate = [RCTVideoDownloaderDelegate expirationDateFromHeaders:[httpResponse allHeaderFields] withStatusCode:[httpResponse statusCode]];
+    self.loadingRequest.contentInformationRequest.renewalDate = renewalDate;
+    NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
+    [dateFormatter setDateFormat:@"yyyy-MM-dd HH:mm:ss"];
+    NSLog(@"VideoDownloader Delegate: Got response for %@, expires %@", [self.baseUrl absoluteString], [dateFormatter stringFromDate:renewalDate]);
+}
+
+- (void)connection:(NSURLConnection*)connection didReceiveData:(NSData *)data {
+    [self.responseData appendData:data];
+}
+
+- (void)connectionDidFinishLoading:(NSURLConnection*)connection {
+    self.loadingRequest.contentInformationRequest.contentLength = self.responseData.length;
+    [self.loadingRequest.dataRequest respondWithData: [self transformResponseData:self.responseData]];
+    [self.loadingRequest finishLoading];
+    self.completionHandler(nil);
+}
+
+- (void)connection:(NSURLConnection*)connection didFailWithError:(NSError *)error {
+    [self.loadingRequest finishLoadingWithError:error];
+    self.completionHandler(error);
+}
+
+- (NSURLRequest *)connection:(NSURLConnection *)connection willSendRequest:(NSURLRequest *)request redirectResponse:(NSURLResponse *)response {
+    self.loadingRequest.redirect = request;
+    return request;
+}
+*/
+
+#pragma mark - Key path methods
+
++ (NSString*)getKeyFilePath:(NSURL*)baseUrl {
+    NSString *baseUrlPath = [RCTVideoDownloaderDelegate getUrlFilePath:baseUrl];
+    if(![[NSFileManager defaultManager] fileExistsAtPath:baseUrlPath]) {
+        return nil;
+    }
+    NSError *error;
+    NSString *keyFilePath = [NSString stringWithContentsOfFile:baseUrlPath encoding:NSUTF8StringEncoding error:&error];
+    if(error) {
+        NSLog(@"VideoDownloader Delegate: Unable to get key file path for %@: %@", [baseUrl absoluteString], error.localizedDescription);
+        return nil;
+    }
+    return keyFilePath;
+}
+
++ (NSString*)getUrlFilePath:(NSURL*)url {
+    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES);
+    NSString *applicationSupportDirectory = [paths firstObject];
+    NSArray *components = [NSArray arrayWithObjects:applicationSupportDirectory, [@([url absoluteString].hash) stringValue], nil];
+    return [NSString pathWithComponents:components];
+}
+
++ (void)downloadKey:(NSMutableURLRequest *)keyRequest completionHandler:(void(^)(NSData*, NSError*))completionHandler {
+    NSString *keyFilePath = [RCTVideoDownloaderDelegate getUrlFilePath:keyRequest.URL];
+    if([[NSFileManager defaultManager] fileExistsAtPath:keyFilePath]) {
+        NSLog(@"VideoDownloader Delegate: Key for %@ exists at %@", [keyRequest.URL absoluteString], keyFilePath);
+        if(completionHandler) {
+            completionHandler([NSData dataWithContentsOfFile:keyFilePath], nil);
+        }
+        return;
+    }
+    NSURLSession *session = [NSURLSession sharedSession];
+    [[session dataTaskWithRequest:keyRequest completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        if ([response isKindOfClass:[NSHTTPURLResponse class]]) {
+            NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse*)response;
+            NSInteger status = [httpResponse statusCode];
+            if (error) {
+                NSLog(@"VideoDownloader Delegate: Key for %@ download error: %@", [keyRequest.URL absoluteString], error.localizedDescription);
+                if(completionHandler) {
+                    return completionHandler(nil, error);
+                }
+            } else if (data && status == 200) {
+                [data writeToFile:keyFilePath atomically:YES];
+                NSLog(@"VideoDownloader Delegate: Key for %@ saved to %@", [keyRequest.URL absoluteString], keyFilePath);
+                if(completionHandler) {
+                    return completionHandler(data, nil);
+                }
+            } else {
+                NSLog(@"VideoDownloader Delegate: Key for %@ download failed with status %ld", [keyRequest.URL absoluteString], (long)status);
+                if(completionHandler) {
+                    return completionHandler(nil, nil);
+                }
+            }
+        } else {
+            NSLog(@"VideoDownloader Delegate: Invalid key response type for %@", [keyRequest.URL absoluteString]);
+            if(completionHandler) {
+                return completionHandler(nil, nil);
+            }
+        }
+    }] resume];
+}
+
+#pragma mark - Date Header methods
 
 + (NSDate *)expirationDateFromHeaders:(NSDictionary *)headers withStatusCode:(NSInteger)status {
     if (status != 200 && status != 203 && status != 300 && status != 301 && status != 302 && status != 307 && status != 410) {
@@ -137,361 +367,8 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
     return date;
 }
 
-- (instancetype)init
-{
-    if (self = [super init]) {
-        [NSURLCache sharedURLCache];
-        self.connectionMap = [NSMutableDictionary dictionary];
-        self.requestMap = [NSMutableDictionary dictionary];
-        self.contentTypeMap = [NSMutableDictionary dictionary];
-        self.baseUrlMap = [NSMutableDictionary dictionary];
-        self.responseDataMap = [NSMutableDictionary dictionary];
-        NSError *regexError = NULL;
-        NSRegularExpressionOptions regexOptions = NSRegularExpressionCaseInsensitive;
-        NSString* keyRegexPattern = @"#EXT-X-KEY.*?URI=\"(.*?)\"";
-        self.keyRegex = [NSRegularExpression regularExpressionWithPattern:keyRegexPattern options:regexOptions error:&regexError];
-        if (regexError) {
-            NSLog(@"RCTVideoDownloaderDelegate: Couldn't create key regex");
-        }
-//        NSString* segmentRegexPattern = @"#EXTINF:.*?\\n(.*?)\\n";
-//        self.segmentRegex = [NSRegularExpression regularExpressionWithPattern:segmentRegexPattern options:regexOptions error:&regexError];
-//        if (regexError) {
-//            NSLog(@"RCTVideoDownloaderDelegate: Couldn't create segment regex");
-//        }
-        NSString* playlistRegexPattern = @"#EXT-X-STREAM-INF:.*?\\n(.*?)\\n";
-        self.playlistRegex = [NSRegularExpression regularExpressionWithPattern:playlistRegexPattern options:regexOptions error:&regexError];
-        if (regexError) {
-            NSLog(@"RCTVideoDownloaderDelegate: Couldn't create playlist regex");
-        }
-    }
-    return self;
-}
-
-- (NSString*)getLoadingRequestKey:(AVAssetResourceLoadingRequest *)loadingRequest {
-    return [NSString stringWithFormat:@"%p", loadingRequest];
-}
-
-- (NSString*)getContentType:(NSURL *)url {
-    NSString *extension = [url pathExtension];
-    NSString *UTI = (__bridge_transfer NSString *)UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension, (__bridge CFStringRef)extension, NULL);
-    return (__bridge_transfer NSString *)UTTypeCopyPreferredTagWithClass((__bridge CFStringRef)UTI, kUTTagClassMIMEType);
-}
-
-- (void)removeRequest:(AVAssetResourceLoadingRequest *)loadingRequest {
-    if (!loadingRequest) {
-        return;
-    }
-    NSString* loadingRequestKey = [self getLoadingRequestKey:loadingRequest];
-    NSURLConnection* connection = self.connectionMap[loadingRequestKey];
-    if(connection) {
-        [connection cancel];
-    }
-    [self.connectionMap removeObjectForKey:loadingRequestKey];
-    [self.requestMap removeObjectForKey:loadingRequestKey];
-    [self.contentTypeMap removeObjectForKey:loadingRequestKey];
-    [self.baseUrlMap removeObjectForKey:loadingRequestKey];
-    [self.responseDataMap removeObjectForKey:loadingRequestKey];
-}
-
-- (NSURLConnection *)connectionForLoadingRequest:(AVAssetResourceLoadingRequest *)loadingRequest {
-    if (!loadingRequest) {
-        return nil;
-    }
-    return self.connectionMap[[self getLoadingRequestKey:loadingRequest]];
-}
-
-- (AVAssetResourceLoadingRequest *)loadingRequestForConnection:(NSURLConnection *)connection {
-    if (!connection) {
-        return nil;
-    }
-    for (NSString *loadingRequestKey in self.connectionMap) {
-        NSURLConnection* value = self.connectionMap[loadingRequestKey];
-        if (value == connection) {
-            return self.requestMap[loadingRequestKey];
-        }
-    }
-    return nil;
-}
-
-- (NSString*)getUrlFilePath:(NSURL*)url {
-    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES);
-    NSString *applicationSupportDirectory = [paths firstObject];
-    NSArray *components = [NSArray arrayWithObjects:applicationSupportDirectory, [@([url absoluteString].hash) stringValue], nil];
-    return [NSString pathWithComponents:components];
-}
-
-- (void)setKeyFilePath:(NSURL*)keyUrl baseUrl:(NSURL*)baseUrl {
-    NSString *baseUrlPath = [self getUrlFilePath:baseUrl];
-    NSString *keyFilePath = [self getUrlFilePath:keyUrl];
-    NSError *error;
-    [keyFilePath writeToFile:baseUrlPath atomically:YES encoding:NSUTF8StringEncoding error:&error];
-    if(error) {
-        NSLog(@"RCTVideoDownloaderDelegate: Unable to set key file path for ", [baseUrl absoluteString], error.localizedDescription);
-    }
-}
-
-- (NSString*)getKeyFilePath:(NSURL*)baseUrl {
-    NSString *baseUrlPath = [self getUrlFilePath:baseUrl];
-    if(![[NSFileManager defaultManager] fileExistsAtPath:baseUrlPath]) {
-        return nil;
-    }
-    NSError *error;
-    NSString *keyFilePath = [NSString stringWithContentsOfFile:baseUrlPath encoding:NSUTF8StringEncoding error:&error];
-    if(error) {
-        NSLog(@"RCTVideoDownloaderDelegate: Unable to get key file path for ", [baseUrl absoluteString], error.localizedDescription);
-        return nil;
-    }
-    return keyFilePath;
-}
-
-- (void)downloadKey:(NSMutableURLRequest *)keyRequest completionHandler:(void(^)(NSData* data, NSError *error))completionHandler {
-    NSString *keyFilePath = [self getUrlFilePath:keyRequest.URL];
-    if([[NSFileManager defaultManager] fileExistsAtPath:keyFilePath]) {
-        NSLog(@"RCTVideoDownloaderDelegate: Key for %@ exists at %@", [keyRequest.URL absoluteString], keyFilePath);
-        if(completionHandler) {
-            completionHandler([NSData dataWithContentsOfFile:keyFilePath], nil);
-        }
-        return;
-    }
-    NSURLSession *session = [NSURLSession sharedSession];
-    [[session dataTaskWithRequest:keyRequest
-                completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-                    if ([response isKindOfClass:[NSHTTPURLResponse class]]) {
-                        NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse*)response;
-                        NSInteger status = [httpResponse statusCode];
-                        if (error) {
-                            NSLog(@"RCTVideoDownloaderDelegate: Key for %@ download error: %@", [keyRequest.URL absoluteString], error.localizedDescription);
-                            if(completionHandler) {
-                                return completionHandler(nil, error);
-                            }
-                        } else if (data && status == 200) {
-                            [data writeToFile:keyFilePath atomically:YES];
-                            NSLog(@"RCTVideoDownloaderDelegate: Key for %@ saved to %@", [keyRequest.URL absoluteString], keyFilePath);
-                            if(completionHandler) {
-                                return completionHandler(data, nil);
-                            }
-                        } else {
-                            NSLog(@"RCTVideoDownloaderDelegate: Key for %@ download failed with status %ld", [keyRequest.URL absoluteString], (long)status);
-                            if(completionHandler) {
-                                return completionHandler(nil, nil);
-                            }
-                        }
-                    } else {
-                        NSLog(@"RCTVideoDownloaderDelegate: Invalid key response type for %@", [keyRequest.URL absoluteString]);
-                        if(completionHandler) {
-                            return completionHandler(nil, nil);
-                        }
-                    }
-                }] resume];
-}
-
-- (NSData *)transformResponseData:(NSData *)data loadingRequest:(AVAssetResourceLoadingRequest*)loadingRequest {
-    NSString* loadingRequestKey = [self getLoadingRequestKey:loadingRequest];
-    NSURL* baseUrl = self.baseUrlMap[loadingRequestKey];
-    NSString *original = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-    if(!original) {
-        return data;
-    }
-    NSLog(@"%@", original);
-    NSArray *keyMatches = [self.keyRegex matchesInString:original options:0 range:NSMakeRange(0, [original length])];
-    NSMutableDictionary* replacements = [NSMutableDictionary dictionary];
-    for (NSTextCheckingResult *keyMatch in keyMatches) {
-        if(keyMatch.numberOfRanges > 1) {
-            NSString* keyUrlString = [original substringWithRange:[keyMatch rangeAtIndex:1]];
-            NSMutableURLRequest *keyRequest = loadingRequest.request.mutableCopy;
-            keyRequest.URL = [NSURL URLWithString:keyUrlString relativeToURL:baseUrl];
-            keyRequest.cachePolicy = NSURLRequestReloadIgnoringLocalCacheData;
-            [self downloadKey:keyRequest completionHandler:nil];
-            [self setKeyFilePath:keyRequest.URL baseUrl:baseUrl];
-            NSURLComponents *keyUrlComponents = [[NSURLComponents alloc] initWithURL:keyRequest.URL resolvingAgainstBaseURL:YES];
-            keyUrlComponents.scheme = [keyUrlComponents.scheme isEqualToString:@"https"] ? @"rctvideokeyhttps" : @"rctvideokeyhttp";
-            replacements[keyUrlString] = [keyUrlComponents.URL absoluteString];
-        }
-    }
-//    NSArray *segmentMatches = [self.segmentRegex matchesInString:original options:0 range:NSMakeRange(0, [original length])];
-//    for (NSTextCheckingResult *segmentMatch in segmentMatches) {
-//        if(segmentMatch.numberOfRanges > 1) {
-//            NSString* segmentUrlString = [original substringWithRange:[segmentMatch rangeAtIndex:1]];
-//            NSURL* segmentUrl = [NSURL URLWithString:segmentUrlString relativeToURL:baseUrl];
-//            replacements[segmentUrlString] = [segmentUrl absoluteString];
-//        }
-//    }
-    NSArray *playlistMatches = [self.playlistRegex matchesInString:original options:0 range:NSMakeRange(0, [original length])];
-    for (NSTextCheckingResult *playlistMatch in playlistMatches) {
-        if(playlistMatch.numberOfRanges > 1) {
-            NSString* playlistUrlString = [original substringWithRange:[playlistMatch rangeAtIndex:1]];
-            NSURLComponents *playlistUrlComponents = [[NSURLComponents alloc] initWithURL:[NSURL URLWithString:playlistUrlString relativeToURL:baseUrl] resolvingAgainstBaseURL:YES];
-            playlistUrlComponents.scheme = [playlistUrlComponents.scheme isEqualToString:@"https"] ? @"rctvideohttps" : @"rctvideohttp";
-            replacements[playlistUrlString] = [playlistUrlComponents.URL absoluteString];
-        }
-    }
-    NSString* transformed = original;
-    for(NSString* urlString in replacements) {
-        transformed = [transformed stringByReplacingOccurrencesOfString:urlString
-                                                             withString:[replacements objectForKey:urlString]];
-    }
-    NSLog(@"%@", transformed);
-    return [transformed dataUsingEncoding:NSUTF8StringEncoding];
-}
-
-#pragma mark - Public
-
-- (void)clearCacheForUrl:(NSURL*)baseUrl {
-    NSLog(@"RCTVideoDownloaderDelegate: Clearing cache for %@", [baseUrl absoluteString]);
-    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:baseUrl];
-    [[NSURLCache sharedURLCache] removeCachedResponseForRequest:request];
-    NSString *keyFilePath = [self getKeyFilePath:baseUrl];
-    if(!keyFilePath) {
-        NSLog(@"RCTVideoDownloaderDelegate: Unable to remove key file for %@, file reference does not exist.", [baseUrl absoluteString]);
-        return;
-    }
-    NSError *error;
-    if(![[NSFileManager defaultManager] fileExistsAtPath:keyFilePath]) {
-        NSLog(@"RCTVideoDownloaderDelegate: Unable to remove key file for %@, file does not exist.", [baseUrl absoluteString]);
-        return;
-    }
-    [[NSFileManager defaultManager] removeItemAtPath:keyFilePath error:&error];
-    if (error) {
-        NSLog(@"RCTVideoDownloaderDelegate: Error removing cached key for %@ download error: %@", [baseUrl absoluteString], error.localizedDescription);
-    }
-}
-
-#pragma mark - Resource loader delegate
-
-- (BOOL)resourceLoader:(AVAssetResourceLoader *)resourceLoader shouldWaitForLoadingOfRequestedResource:(AVAssetResourceLoadingRequest *)loadingRequest {
-    NSURLComponents *components = [[NSURLComponents alloc] initWithURL:loadingRequest.request.URL resolvingAgainstBaseURL:YES];
-    if(![components.scheme isEqualToString:@"rctvideohttps"] && ![components.scheme isEqualToString:@"rctvideohttp"] && ![components.scheme isEqualToString:@"rctvideokeyhttps"] && ![components.scheme isEqualToString:@"rctvideokeyhttp"]) {
-        return NO;
-    }
-    if([components.scheme isEqualToString:@"rctvideokeyhttps"] || [components.scheme isEqualToString:@"rctvideokeyhttp"]) {
-        NSMutableURLRequest *keyRequest = loadingRequest.request.mutableCopy;
-        components.scheme = [components.scheme isEqualToString:@"rctvideokeyhttps"] ? @"https" : @"http";
-        keyRequest.URL = components.URL;
-        [self downloadKey:keyRequest completionHandler:^(NSData* data, NSError* error){
-            if(error) {
-                [loadingRequest finishLoadingWithError:error];
-                return;
-            }
-            if(data) {
-                loadingRequest.contentInformationRequest.contentLength = data.length;
-                loadingRequest.contentInformationRequest.contentType = AVStreamingKeyDeliveryPersistentContentKeyType;
-                loadingRequest.contentInformationRequest.byteRangeAccessSupported = NO;
-                [loadingRequest.dataRequest respondWithData: data];
-            }
-            [loadingRequest finishLoading];
-        }];
-        return YES;
-    }
-    components.scheme = [components.scheme isEqualToString:@"rctvideohttps"] ? @"https" : @"http";
-    if([components.path containsString:@".m3u8"]) {
-        NSMutableURLRequest *request = loadingRequest.request.mutableCopy;
-        NSURL* baseUrl = components.URL;
-        request.URL = components.URL;
-        request.cachePolicy = NSURLRequestUseProtocolCachePolicy;
-        NSString* loadingRequestKey = [self getLoadingRequestKey:loadingRequest];
-        self.requestMap[loadingRequestKey] = loadingRequest;
-        self.baseUrlMap[loadingRequestKey] = baseUrl;
-        NSCachedURLResponse *cachedResponse = [[NSURLCache sharedURLCache] cachedResponseForRequest:request];
-        if(cachedResponse) {
-            NSHTTPURLResponse *cachedHttpResponse = (NSHTTPURLResponse*)[cachedResponse response];
-            NSString *contentType = [cachedHttpResponse MIMEType];
-            loadingRequest.response = [cachedResponse response];
-            loadingRequest.contentInformationRequest.contentType = contentType;
-            loadingRequest.contentInformationRequest.byteRangeAccessSupported = NO;
-            NSDate* renewalDate = [RCTVideoDownloaderDelegate expirationDateFromHeaders:[cachedHttpResponse allHeaderFields] withStatusCode:[cachedHttpResponse statusCode]];
-            loadingRequest.contentInformationRequest.renewalDate = renewalDate;
-            [loadingRequest.dataRequest respondWithData: [self transformResponseData:cachedResponse.data loadingRequest:loadingRequest]];
-            [loadingRequest finishLoading];
-            [self removeRequest:loadingRequest];
-            NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
-            [dateFormatter setDateFormat:@"yyyy-MM-dd HH:mm:ss"];
-            NSLog(@"RCTVideoDownloaderDelegate: Got cached response for %@, expires %@", [baseUrl absoluteString], [dateFormatter stringFromDate:renewalDate]);
-            return YES;
-        }
-        NSLog(@"RCTVideoDownloaderDelegate: Loading %@", [baseUrl absoluteString]);
-        NSURLConnection * connection = [[NSURLConnection alloc] initWithRequest:request delegate:self startImmediately:NO];
-        self.connectionMap[loadingRequestKey] = connection;
-        self.responseDataMap[loadingRequestKey] = [NSMutableData data];
-        [connection start];
-        return YES;
-    }
-//    NSMutableURLRequest *request = loadingRequest.request.mutableCopy;
-//    NSCachedURLResponse *cachedResponse = [[NSURLCache sharedURLCache] cachedResponseForRequest:request];
-//    if(cachedResponse){
-//        NSLog(@"RCTVideoDownloaderDelegate: Sending cached response %@", [components.URL absoluteString]);
-//        NSHTTPURLResponse *httpCacheResponse = (NSHTTPURLResponse *)cachedResponse.response;
-//        [loadingRequest setResponse:httpCacheResponse];
-//        [loadingRequest finishLoading];
-//        return YES;
-//    }
-    NSLog(@"RCTVideoDownloaderDelegate: Redirecting %@", [components.URL absoluteString]);
-    NSURLRequest* redirect = [NSURLRequest requestWithURL:components.URL];
-    [loadingRequest setRedirect:redirect];
-    NSHTTPURLResponse *response = [[NSHTTPURLResponse alloc] initWithURL:[redirect URL] statusCode:301 HTTPVersion:nil headerFields:nil];
-    [loadingRequest setResponse:response];
-    [loadingRequest finishLoading];
-    return YES;
-}
-
-- (void)resourceLoader:(AVAssetResourceLoader *)resourceLoader didCancelLoadingRequest:(AVAssetResourceLoadingRequest *)loadingRequest {
-    [self removeRequest:loadingRequest];
-}
-
-#pragma mark - NSURL Connection delegate
-
-- (void)connection:(NSURLConnection *)connection didReceiveResponse:(NSURLResponse *)response
-{
-    AVAssetResourceLoadingRequest* loadingRequest = [self loadingRequestForConnection:connection];
-    NSString* loadingRequestKey = [self getLoadingRequestKey:loadingRequest];
-    NSURL* baseUrl = self.baseUrlMap[loadingRequestKey];
-    if (![response isKindOfClass:[NSHTTPURLResponse class]]) {
-        NSLog(@"RCTVideoDownloaderDelegate: Invalid response response type for %@", [baseUrl absoluteString]);
-    }
-    NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse*)response;
-    NSString *contentType = [httpResponse MIMEType];
-    NSMutableData *responseData = self.responseDataMap[loadingRequestKey];
-    [responseData setLength:0];
-    loadingRequest.response = response;
-    loadingRequest.contentInformationRequest.contentType = contentType;
-    loadingRequest.contentInformationRequest.byteRangeAccessSupported = NO;
-    NSDate* renewalDate = [RCTVideoDownloaderDelegate expirationDateFromHeaders:[httpResponse allHeaderFields] withStatusCode:[httpResponse statusCode]];
-    loadingRequest.contentInformationRequest.renewalDate = renewalDate;
-    NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
-    [dateFormatter setDateFormat:@"yyyy-MM-dd HH:mm:ss"];
-    NSLog(@"RCTVideoDownloaderDelegate: Got response for %@, expires %@", [baseUrl absoluteString], [dateFormatter stringFromDate:renewalDate]);
-}
-
-- (void)connection:(NSURLConnection*)connection didReceiveData:(NSData *)data {
-    AVAssetResourceLoadingRequest* loadingRequest = [self loadingRequestForConnection:connection];
-    NSString* loadingRequestKey = [self getLoadingRequestKey:loadingRequest];
-    NSMutableData *responseData = self.responseDataMap[loadingRequestKey];
-    [responseData appendData:data];
-}
-
-- (void)connectionDidFinishLoading:(NSURLConnection*)connection {
-    AVAssetResourceLoadingRequest* loadingRequest = [self loadingRequestForConnection:connection];
-    NSString* loadingRequestKey = [self getLoadingRequestKey:loadingRequest];
-    NSMutableData *responseData = self.responseDataMap[loadingRequestKey];
-    loadingRequest.contentInformationRequest.contentLength = responseData.length;
-    [loadingRequest.dataRequest respondWithData: [self transformResponseData:responseData loadingRequest:loadingRequest]];
-    [loadingRequest finishLoading];
-    [self removeRequest:loadingRequest];
-}
-
-- (void)connection:(NSURLConnection*)connection didFailWithError:(NSError *)error {
-    AVAssetResourceLoadingRequest* loadingRequest = [self loadingRequestForConnection:connection];
-    [loadingRequest finishLoadingWithError:error];
-    [self removeRequest:loadingRequest];
-}
-
-- (NSURLRequest *)connection:(NSURLConnection *)connection willSendRequest:(NSURLRequest *)request redirectResponse:(NSURLResponse *)response {
-    AVAssetResourceLoadingRequest* loadingRequest = [self loadingRequestForConnection:connection];
-    loadingRequest.redirect = request;
-    return request;
-}
-
-
 @end
+
 
 
 

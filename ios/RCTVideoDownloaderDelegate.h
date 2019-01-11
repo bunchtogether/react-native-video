@@ -9,9 +9,9 @@
 
 @interface RCTVideoDownloaderDelegate : NSObject <AVAssetResourceLoaderDelegate>
 
-+ (instancetype)sharedVideoDownloaderDelegate;
++ (void)cacheKeys:(AVURLAsset *)asset queue:(dispatch_queue_t)queue completionHandler:(void (^)(NSError *))completionHandler;
 
-- (void)clearCacheForUrl:(NSURL*)baseUrl;
++ (void)clearCacheForUrl:(NSURL*)url;
 
 @end
 

@@ -81,6 +81,7 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
     return delegates;
 }
 
+
 + (void)cacheKeys:(AVURLAsset *)asset queue:(dispatch_queue_t)queue completionHandler:(void (^)(NSError *))completionHandler {
     NSURLComponents *components = [[NSURLComponents alloc] initWithURL:asset.URL resolvingAgainstBaseURL:YES];
     if([components.path containsString:@".m3u8"]) {
@@ -148,6 +149,7 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
     [loadingRequest finishLoading];
     if(self.completionHandler) {
         self.completionHandler(nil);
+        self.completionHandler = nil;
     }
     return YES;
 }
@@ -159,6 +161,7 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
                                      userInfo:userInfo];
     if(self.completionHandler) {
         self.completionHandler(error);
+        self.completionHandler = nil;
     }
 }
 

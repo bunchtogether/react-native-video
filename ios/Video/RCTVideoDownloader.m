@@ -202,7 +202,7 @@
       AVAssetCache* assetCache = asset.assetCache;
       if (assetCache) {
         NSLog(@"VideoDownloader: Found bookmark for cached asset %@ with cache key %@ at %@", urlString, cacheKey, [location absoluteString]);
-        RCTVideoDownloaderDelegate* delegate = [[RCTVideoDownloaderDelegate alloc] initWithCompletionHandler:nil];
+        RCTVideoDownloaderDelegate* delegate = [[RCTVideoDownloaderDelegate alloc] initWith:self.queue completionHandler:nil];
         [asset.resourceLoader setDelegate:delegate queue:self.delegateQueue];
         asset.resourceLoader.preloadsEligibleContentKeys = YES;
         self.delegates[cacheKey] = delegate;
@@ -230,8 +230,7 @@
                                                     AVURLAssetHTTPCookiesKey:cookies,
                                                     AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)
                                                     }];
-  RCTVideoDownloaderDelegate* delegate = [[RCTVideoDownloaderDelegate alloc] initWithCompletionHandler:^(NSError *error){
-    dispatch_async(self.queue, ^{
+  RCTVideoDownloaderDelegate* delegate = [[RCTVideoDownloaderDelegate alloc] initWith:self.queue completionHandler:^(NSError *error){
       if(error) {
         NSLog(@"VideoDownloader: Error starting task for asset %@ with cache key %@: %@", urlString, cacheKey, error.localizedDescription);
         [self.delegates removeObjectForKey:cacheKey];
@@ -249,7 +248,6 @@
       }
       [task resume];
       NSLog(@"VideoDownloader: Got new task %lu for asset %@ with cache key %@", (unsigned long)task.taskIdentifier, urlString, cacheKey);
-    });
   }];
   [asset.resourceLoader setDelegate:delegate queue:self.delegateQueue];
   asset.resourceLoader.preloadsEligibleContentKeys = YES;
@@ -316,6 +314,7 @@
      return;
      }
      */
+  
     AVURLAsset *bookmarkedAsset = [self getBookmarkedAsset:urlString cacheKey:cacheKey];
     if(bookmarkedAsset) {
       [self checkAsset:bookmarkedAsset cacheKey:cacheKey completion:^(AVURLAsset *asset, NSError *error){
@@ -329,9 +328,14 @@
       }];
       return;
     }
-    AVURLAsset *asset = [self getNewTask:url urlString:urlString cacheKey:cacheKey cookies:cookies];
-    [self checkAsset:asset cacheKey:cacheKey completion:completion];
-    
+
+    AVURLAsset *asset = [self getNewTask:url
+                               urlString:urlString
+                                cacheKey:cacheKey
+                                 cookies:cookies];
+    [self checkAsset:asset
+            cacheKey:cacheKey
+          completion:completion];
   });
 }
 

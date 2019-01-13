@@ -9,9 +9,11 @@
 
 @interface RCTVideoDownloaderDelegate : NSObject <AVAssetResourceLoaderDelegate>
 
-- (instancetype)initWith:(dispatch_queue_t)queue completionHandler:(void (^)(NSError *))completionHandler;
++ (instancetype)sharedVideoDownloaderDelegate;
 
-+ (void)clearCacheForUrl:(NSURL*)url;
+- (void)addCompletionHandlerForAsset:(AVURLAsset *)asset completionHandler:(void (^)(NSError *))completionHandler;
+
++ (void)clearCacheForUrl:(NSString*)urlString;
 
 @end
 

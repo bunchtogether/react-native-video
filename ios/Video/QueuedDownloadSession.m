@@ -53,29 +53,34 @@ BLOCK(); \
 
 - (void)resume {
     AVURLAsset *asset = [AVURLAsset URLAssetWithURL:self.url options:@{AVURLAssetHTTPCookiesKey : self.cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
-
-    
-    
-    
-    
-    NSArray *preferredMediaSelections = [NSArray arrayWithObjects:asset.preferredMediaSelection,nil];
-    self.task = [self.session aggregateAssetDownloadTaskWithURLAsset:asset
-                                                      mediaSelections:preferredMediaSelections
-                                                           assetTitle:@"Video Download"
-                                                     assetArtworkData:nil
-                                                              options:nil];
-    
-    if (!self.task && self.session.configuration.identifier) {
-        for (NSUInteger attempts = 0; !self.task && attempts < 3; attempts++) {
-            self.task = [self.session aggregateAssetDownloadTaskWithURLAsset:asset
-                                                             mediaSelections:preferredMediaSelections
-                                                                  assetTitle:@"Video Download"
-                                                            assetArtworkData:nil
-                                                                     options:nil];
+    RCTVideoDownloaderDelegate *delegate = [RCTVideoDownloaderDelegate sharedVideoDownloaderDelegate];
+    [delegate addCompletionHandlerForAsset:asset completionHandler:^(NSError *error){
+        NSString * urlString = [self.url absoluteString];
+        if(error) {
+            NSLog(@"VideoDownloader: Error starting task for asset %@ with cache key %@: %@", urlString, self.cacheKey, error.localizedDescription);
+            return;
         }
-    }
-    self.task.taskDescription = self.cacheKey;
-    [self.task resume];
+        NSArray *preferredMediaSelections = [NSArray arrayWithObjects:asset.preferredMediaSelection,nil];
+        self.task = [self.session aggregateAssetDownloadTaskWithURLAsset:asset
+                                                         mediaSelections:preferredMediaSelections
+                                                              assetTitle:@"Video Download"
+                                                        assetArtworkData:nil
+                                                                 options:nil];
+        if (!self.task && self.session.configuration.identifier) {
+            for (NSUInteger attempts = 0; !self.task && attempts < 3; attempts++) {
+                self.task = [self.session aggregateAssetDownloadTaskWithURLAsset:asset
+                                                                 mediaSelections:preferredMediaSelections
+                                                                      assetTitle:@"Video Download"
+                                                                assetArtworkData:nil
+                                                                         options:nil];
+            }
+        }
+        self.task.taskDescription = self.cacheKey;
+        [self.task resume];
+        NSLog(@"VideoDownloader: Got new task %lu for asset %@ with cache key %@", (unsigned long)self.task.taskIdentifier, urlString, self.cacheKey);
+    }];
+    [asset.resourceLoader setDelegate:delegate queue:self.queue];
+    asset.resourceLoader.preloadsEligibleContentKeys = YES;
     self.suspended = NO;
 }
 
@@ -106,31 +111,37 @@ BLOCK(); \
         return;
     }
     AVURLAsset *asset = [AVURLAsset URLAssetWithURL:self.url options:@{AVURLAssetHTTPCookiesKey : self.cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
-
     
-    
-    
-    
-    
-    NSArray *preferredMediaSelections = [NSArray arrayWithObjects:asset.preferredMediaSelection,nil];
-    self.task = [self.session aggregateAssetDownloadTaskWithURLAsset:asset
-                                                     mediaSelections:preferredMediaSelections
-                                                          assetTitle:@"Video Download"
-                                                    assetArtworkData:nil
-                                                             options:nil];
-    if (!self.task && self.session.configuration.identifier) {
-        for (NSUInteger attempts = 0; !self.task && attempts < 3; attempts++) {
-            self.task = [self.session aggregateAssetDownloadTaskWithURLAsset:asset
-                                                             mediaSelections:preferredMediaSelections
-                                                                  assetTitle:@"Video Download"
-                                                            assetArtworkData:nil
-                                                                     options:nil];
+    RCTVideoDownloaderDelegate *delegate = [RCTVideoDownloaderDelegate sharedVideoDownloaderDelegate];
+    [delegate addCompletionHandlerForAsset:asset completionHandler:^(NSError *error){
+        NSString * urlString = [self.url absoluteString];
+        if(error) {
+            NSLog(@"VideoDownloader: Error starting task for asset %@ with cache key %@: %@", urlString, self.cacheKey, error.localizedDescription);
+            return;
         }
-    }
-    self.task.taskDescription = self.cacheKey;
+        NSArray *preferredMediaSelections = [NSArray arrayWithObjects:asset.preferredMediaSelection,nil];
+        self.task = [self.session aggregateAssetDownloadTaskWithURLAsset:asset
+                                                         mediaSelections:preferredMediaSelections
+                                                              assetTitle:@"Video Download"
+                                                        assetArtworkData:nil
+                                                                 options:nil];
+        if (!self.task && self.session.configuration.identifier) {
+            for (NSUInteger attempts = 0; !self.task && attempts < 3; attempts++) {
+                self.task = [self.session aggregateAssetDownloadTaskWithURLAsset:asset
+                                                                 mediaSelections:preferredMediaSelections
+                                                                      assetTitle:@"Video Download"
+                                                                assetArtworkData:nil
+                                                                         options:nil];
+            }
+        }
+        self.task.taskDescription = self.cacheKey;
+        [self.task resume];
+        NSLog(@"VideoDownloader: Got new task %lu for asset %@ with cache key %@", (unsigned long)self.task.taskIdentifier, urlString, self.cacheKey);
+    }];
+    [asset.resourceLoader setDelegate:delegate queue:self.queue];
+    asset.resourceLoader.preloadsEligibleContentKeys = YES;
     QUEUED_DOWNLOAD_BLOCK(@"isExecuting", ^{
         NSLog(@"VideoDownloader: Prefetch executing for %@ with cache key %@", [self.url absoluteString], self.task.taskDescription);
-        [self.task resume];
         _executing = YES;
     });
 }

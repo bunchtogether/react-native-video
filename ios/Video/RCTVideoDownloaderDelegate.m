@@ -15,6 +15,7 @@
 @property (nonatomic, strong) dispatch_queue_t queue;
 @property (nonatomic, strong) NSMutableDictionary *responseMap;
 @property (nonatomic, strong) NSMutableDictionary *dataMap;
+@property (nonatomic, strong) NSMutableDictionary *downloadCompletionHandlerMap;
 @property (nonatomic, strong) NSMutableDictionary *completionHandlerMap;
 @end
 
@@ -66,27 +67,50 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
     return regex;
 }
 
-+ (void)clearCacheForUrl:(NSURL*)baseUrl {
-    NSLog(@"VideoDownloader Delegate: Clearing cache for %@", [baseUrl absoluteString]);
++ (void)setKeyFilePath:(NSURL*)keyUrl baseUrl:(NSURL*)baseUrl {
+    NSString *baseUrlPath = [self getUrlFilePath:baseUrl];
+    NSString *keyFilePath = [self getUrlFilePath:keyUrl];
+    NSError *error;
+    [keyFilePath writeToFile:baseUrlPath atomically:YES encoding:NSUTF8StringEncoding error:&error];
+    if(error) {
+        NSLog(@"VideoDownloader Delegate: Unable to set key file path for ", [baseUrl absoluteString], error.localizedDescription);
+    }
+}
+
++ (void)clearCacheForUrl:(NSString*)urlString {
+    NSLog(@"VideoDownloader Delegate: Clearing cache for %@", urlString);
+    NSURL *baseUrl = [NSURL URLWithString:urlString];
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:baseUrl];
     [[NSURLCache sharedURLCache] removeCachedResponseForRequest:request];
     NSString *keyFilePath = [RCTVideoDownloaderDelegate getKeyFilePath:baseUrl];
     if(!keyFilePath) {
-        NSLog(@"VideoDownloader Delegate: Unable to remove key file for %@, file reference does not exist.", [baseUrl absoluteString]);
+        NSLog(@"VideoDownloader Delegate: Unable to remove key file for %@, file reference does not exist.", urlString);
         return;
     }
     NSError *error;
     if(![[NSFileManager defaultManager] fileExistsAtPath:keyFilePath]) {
-        NSLog(@"VideoDownloader Delegate: Unable to remove key file for %@, file does not exist.", [baseUrl absoluteString]);
+        NSLog(@"VideoDownloader Delegate: Unable to remove key file for %@, file does not exist.", urlString);
         return;
     }
     [[NSFileManager defaultManager] removeItemAtPath:keyFilePath error:&error];
     if (error) {
-        NSLog(@"VideoDownloader Delegate: Error removing cached key for %@ download error: %@", [baseUrl absoluteString], error.localizedDescription);
+        NSLog(@"VideoDownloader Delegate: Error removing cached key for %@ download error: %@", urlString, error.localizedDescription);
     }
 }
 
++ (instancetype)sharedVideoDownloaderDelegate {
+    static RCTVideoDownloaderDelegate *sharedVideoDownloaderDelegate = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        dispatch_queue_t queue = dispatch_queue_create("Video Downloader Delegate Queue", DISPATCH_QUEUE_SERIAL);
+        sharedVideoDownloaderDelegate = [[self alloc] initWithQueue:queue];
+    });
+    return sharedVideoDownloaderDelegate;
+}
+
 #pragma mark - Private
+
+
 
 - (void)dealloc
 {
@@ -94,23 +118,31 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
     self.completionHandler = nil;
 }
 
-- (instancetype)initWith:(dispatch_queue_t)queue completionHandler:(void (^)(NSError *))completionHandler {
+- (instancetype)initWithQueue:(dispatch_queue_t)queue {
     if (self = [super init]) {
         self.responseMap = [NSMutableDictionary dictionary];
         self.dataMap = [NSMutableDictionary dictionary];
+        self.downloadCompletionHandlerMap = [NSMutableDictionary dictionary];
         self.completionHandlerMap = [NSMutableDictionary dictionary];
         self.queue = queue;
-        self.completionHandler = completionHandler;
     }
     return self;
 }
 
-- (void)runCompletionHandler:(NSError *)error {
-    if(!self.completionHandler) {
+- (void)addCompletionHandlerForAsset:(AVURLAsset *)asset completionHandler:(void (^)(NSError *))completionHandler {
+    NSString *key = [NSString stringWithFormat:@"%p", asset.resourceLoader];
+    self.completionHandlerMap[key] = completionHandler;
+}
+
+- (void)runCompletionHandler:(NSError *)error resourceLoader:(AVAssetResourceLoader *)resourceLoader {
+    NSString *key = [NSString stringWithFormat:@"%p", resourceLoader];
+    __block void (^completionHandler)(NSError *) = self.completionHandlerMap[key];
+    if(!completionHandler) {
+        NSLog(@"VideoDownloader Delegate: Completion handler does not exist");
         return;
     }
-    __block void (^completionHandler)(NSError *) = self.completionHandler;
-    self.completionHandler = nil;
+    NSLog(@"VideoDownloader Delegate: Completion handler exists");
+    [self.completionHandlerMap removeObjectForKey:key];
     dispatch_async(self.queue, ^{
         completionHandler(error);
     });
@@ -168,7 +200,7 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
         NSHTTPURLResponse *response = [[NSHTTPURLResponse alloc] initWithURL:[redirect URL] statusCode:301 HTTPVersion:nil headerFields:nil];
         [loadingRequest setResponse:response];
         [loadingRequest finishLoading];
-        [self runCompletionHandler:nil];
+        [self runCompletionHandler:nil resourceLoader:resourceLoader];
         return YES;
     }
     NSLog(@"VideoDownloader Delegate: Downloading %@", [components.URL absoluteString]);
@@ -199,6 +231,7 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
             if(keyMatch.numberOfRanges > 1) {
                 NSString* keyUrlString = [original substringWithRange:[keyMatch rangeAtIndex:1]];
                 NSURL *keyUrl = [NSURL URLWithString:keyUrlString relativeToURL:request.URL];
+                [RCTVideoDownloaderDelegate setKeyFilePath:keyUrl baseUrl:request.URL];
                 NSURLComponents *keyUrlComponents = [[NSURLComponents alloc] initWithURL:keyUrl resolvingAgainstBaseURL:YES];
                 keyUrlComponents.scheme = [keyUrlComponents.scheme isEqualToString:@"https"] ? @"rctvideokeyhttps" : @"rctvideokeyhttp";
                 replacements[keyUrlString] = [keyUrlComponents.URL absoluteString];
@@ -239,7 +272,7 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
         [loadingRequest finishLoading];
         return;
     }];
-    [self runCompletionHandler:nil];
+    [self runCompletionHandler:nil resourceLoader:resourceLoader];
     return YES;
 }
 
@@ -248,7 +281,7 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
     NSError *error = [NSError errorWithDomain:[[NSBundle mainBundle] bundleIdentifier]
                                          code:-999
                                      userInfo:userInfo];
-    [self runCompletionHandler:error];
+    [self runCompletionHandler:error resourceLoader:resourceLoader];
 }
 
 #pragma mark - Key path methods
@@ -308,7 +341,7 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
     NSURLConnection *connection = [[NSURLConnection alloc] initWithRequest:request delegate:self startImmediately:NO];
     NSString *key = [NSString stringWithFormat:@"%p", connection];
     self.dataMap[key] = [[NSMutableData alloc] init];
-    self.completionHandlerMap[key] = completionHandler;
+    self.downloadCompletionHandlerMap[key] = completionHandler;
     [connection start];
 }
 
@@ -332,21 +365,21 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
 - (void)connectionDidFinishLoading:(NSURLConnection*)connection {
     NSLog(@"VideoDownloader Delegate: didReceiveData");
     NSString *key = [NSString stringWithFormat:@"%p", connection];
-    void (^completionHandler)(NSData*, NSHTTPURLResponse*, NSError*) = self.completionHandlerMap[key];
+    void (^completionHandler)(NSData*, NSHTTPURLResponse*, NSError*) = self.downloadCompletionHandlerMap[key];
     completionHandler(self.dataMap[key], self.responseMap[key], nil);
     [self.dataMap removeObjectForKey:key];
     [self.responseMap removeObjectForKey:key];
-    [self.completionHandlerMap removeObjectForKey:key];
+    [self.downloadCompletionHandlerMap removeObjectForKey:key];
 }
 
 - (void)connection:(NSURLConnection*)connection didFailWithError:(NSError *)error {
     NSLog(@"VideoDownloader Delegate: didFailWithError");
     NSString *key = [NSString stringWithFormat:@"%p", connection];
-    void (^completionHandler)(NSData*, NSHTTPURLResponse*, NSError*) = self.completionHandlerMap[key];
+    void (^completionHandler)(NSData*, NSHTTPURLResponse*, NSError*) = self.downloadCompletionHandlerMap[key];
     completionHandler(self.dataMap[key], self.responseMap[key], error);
     [self.dataMap removeObjectForKey:key];
     [self.responseMap removeObjectForKey:key];
-    [self.completionHandlerMap removeObjectForKey:key];
+    [self.downloadCompletionHandlerMap removeObjectForKey:key];
 }
 
 - (NSURLRequest *)connection:(NSURLConnection *)connection willSendRequest:(NSURLRequest *)request redirectResponse:(NSURLResponse *)response {

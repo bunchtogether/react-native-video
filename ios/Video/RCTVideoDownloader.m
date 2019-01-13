@@ -314,7 +314,7 @@
      return;
      }
      */
-  
+    /*
     AVURLAsset *bookmarkedAsset = [self getBookmarkedAsset:urlString cacheKey:cacheKey];
     if(bookmarkedAsset) {
       [self checkAsset:bookmarkedAsset cacheKey:cacheKey completion:^(AVURLAsset *asset, NSError *error){
@@ -328,6 +328,7 @@
       }];
       return;
     }
+     */
 
     AVURLAsset *asset = [self getNewTask:url
                                urlString:urlString

@@ -179,7 +179,7 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
         if(error) {
             NSLog(@"VideoDownloader Delegate: Playlist %@ download error %@", [request.URL absoluteString], error.localizedDescription);
             [loadingRequest finishLoadingWithError:error];
-            return [self runCompletionHandler:error];
+            return;
         }
         NSLog(@"VideoDownloader Delegate: Playlist %@ downloaded", [request.URL absoluteString]);
         NSString *original = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
@@ -190,7 +190,7 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
                                                          code:-1
                                                      userInfo:userInfo];
             [loadingRequest finishLoadingWithError:responseError];
-            return [self runCompletionHandler:responseError];
+            return;
         }
         NSLog(@"\n\n%@\n\n", original);
         NSMutableDictionary* replacements = [NSMutableDictionary dictionary];
@@ -237,8 +237,9 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
         loadingRequest.contentInformationRequest.renewalDate = renewalDate;
         [loadingRequest.dataRequest respondWithData: transformedData];
         [loadingRequest finishLoading];
-        return [self runCompletionHandler:nil];
+        return;
     }];
+    [self runCompletionHandler:nil];
     return YES;
 }
 

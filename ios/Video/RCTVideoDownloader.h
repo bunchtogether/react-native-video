@@ -16,7 +16,7 @@
         cacheKey:(NSString *)cacheKey
          cookies:(NSArray *)cookies
          resolve:(RCTPromiseResolveBlock)resolve
-         reject:(RCTPromiseRejectBlock)reject;
+          reject:(RCTPromiseRejectBlock)reject;
 
 - (void)getAsset:(NSURL *)url
         cacheKey:(NSString *)cacheKey
@@ -27,3 +27,4 @@
 - (void)clearCachedAsset:(NSString *)cacheKey;
 
 @end
+

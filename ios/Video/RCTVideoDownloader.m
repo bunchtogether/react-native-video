@@ -8,24 +8,6 @@
 #import "BackgroundDownloadAppDelegate.h"
 #import "RCTVideoDownloaderDelegate.h"
 
-@interface MediaSelections : NSObject
-@property (nonatomic, nullable) AVMediaSelectionGroup* group;
-@property (nonatomic, nullable) AVMediaSelectionOption* option;
-@end
-
-@implementation MediaSelections
-
-- (instancetype)initWithGroup:(AVMediaSelectionGroup*)group option:(AVMediaSelectionOption*)option {
-  self = [super init];
-  if (self) {
-    self.group = group;
-    self.option = option;
-  }
-  return self;
-}
-
-@end
-
 @interface RCTVideoDownloader ()
 
 @property (nonatomic, strong) NSMutableDictionary *mediaSelectionTasks;
@@ -48,16 +30,15 @@
   if (self) {
     self.mediaSelectionTasks = [[NSMutableDictionary alloc] init];
     self.tasks = [[NSMutableDictionary alloc] init];
-    
     self.validatedAssets = [[NSMutableDictionary alloc] init];
     self.downloadLocationUrls = [[NSMutableDictionary alloc] init];
     NSURLSessionConfiguration *sessionConfig = [NSURLSessionConfiguration backgroundSessionConfigurationWithIdentifier:@"ReactNativeVideoDownloader"];
-    //sessionConfig.networkServiceType = NSURLNetworkServiceTypeVideo;
-    // sessionConfig.allowsCellularAccess = true;
-    // sessionConfig.sessionSendsLaunchEvents = true;
-    // sessionConfig.HTTPCookieAcceptPolicy = NSHTTPCookieAcceptPolicyAlways;
-    //sessionConfig.shouldUseExtendedBackgroundIdleMode = YES;
-    // sessionConfig.HTTPShouldUsePipelining = YES;
+    sessionConfig.networkServiceType = NSURLNetworkServiceTypeVideo;
+    sessionConfig.allowsCellularAccess = true;
+    sessionConfig.sessionSendsLaunchEvents = true;
+    sessionConfig.HTTPCookieAcceptPolicy = NSHTTPCookieAcceptPolicyAlways;
+    sessionConfig.shouldUseExtendedBackgroundIdleMode = YES;
+    sessionConfig.HTTPShouldUsePipelining = YES;
     self.session = [AVAssetDownloadURLSession sessionWithConfiguration:sessionConfig assetDownloadDelegate:self delegateQueue:[NSOperationQueue mainQueue]];
     self.session.sessionDescription = @"ReactNativeVideoDownloader";
     self.mainOperationQueue = [[NSOperationQueue alloc] init];
@@ -341,27 +322,27 @@
          cookies:(NSArray *)cookies
          resolve:(RCTPromiseResolveBlock)resolve
           reject:(RCTPromiseRejectBlock)reject {
-  #if !TARGET_IPHONE_SIMULATOR
-    dispatch_async(self.queue, ^{
-      if([self.cacheKeys containsObject: cacheKey]) {
-        NSLog(@"VideoDownloader: Redundant cache download skipped for %@ with cache key %@", uri, cacheKey);
-      } else if(![self hasCachedAsset:cacheKey]) {
-        NSURL *url = [NSURL URLWithString:uri];
-        NSURLComponents *urlComponents = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:YES];
-        if([urlComponents.path containsString:@".m3u8"]) {
-          if([urlComponents.scheme isEqualToString:@"https"]) {
-            urlComponents.scheme = @"rctvideohttps";
-          } else if([urlComponents.scheme isEqualToString:@"http"]) {
-            urlComponents.scheme = @"rctvideohttp";
-          }
-          url = urlComponents.URL;
+#if !TARGET_IPHONE_SIMULATOR
+  dispatch_async(self.queue, ^{
+    if([self.cacheKeys containsObject: cacheKey]) {
+      NSLog(@"VideoDownloader: Redundant cache download skipped for %@ with cache key %@", uri, cacheKey);
+    } else if(![self hasCachedAsset:cacheKey]) {
+      NSURL *url = [NSURL URLWithString:uri];
+      NSURLComponents *urlComponents = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:YES];
+      if([urlComponents.path containsString:@".m3u8"]) {
+        if([urlComponents.scheme isEqualToString:@"https"]) {
+          urlComponents.scheme = @"rctvideohttps";
+        } else if([urlComponents.scheme isEqualToString:@"http"]) {
+          urlComponents.scheme = @"rctvideohttp";
         }
-        [self.cacheKeys addObject: cacheKey];
-        DownloadSessionOperation *operation = [[DownloadSessionOperation alloc] initWithDelegate:self url:url cacheKey:cacheKey cookies:cookies queue:self.delegateQueue];
-        [self.mainOperationQueue addOperation:operation];
+        url = urlComponents.URL;
       }
-    });
-  #endif
+      [self.cacheKeys addObject: cacheKey];
+      DownloadSessionOperation *operation = [[DownloadSessionOperation alloc] initWithDelegate:self url:url cacheKey:cacheKey cookies:cookies queue:self.delegateQueue];
+      [self.mainOperationQueue addOperation:operation];
+    }
+  });
+#endif
   resolve(@{@"success":@YES});
 }
 
@@ -494,19 +475,5 @@ aggregateAssetDownloadTask:(AVAggregateAssetDownloadTask *)aggregateAssetDownloa
 }
 
 @end
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 

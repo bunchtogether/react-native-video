@@ -23,3 +23,4 @@
 @property (nonatomic, strong, readonly) AVAggregateAssetDownloadTask *task;
 
 @end
+

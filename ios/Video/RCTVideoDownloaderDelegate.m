@@ -9,7 +9,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import "RCTVideoDownloaderDelegate.h"
 
-@interface RCTVideoDownloaderDelegate () <NSURLConnectionDelegate, NSURLConnectionDataDelegate>
+@interface RCTVideoDownloaderDelegate ()
 @property (nonatomic, strong) NSURL *baseUrl;
 @property (nonatomic, copy) void (^completionHandler)(NSError *);
 @property (nonatomic, strong) dispatch_queue_t queue;
@@ -150,8 +150,7 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
 #pragma mark - AVAssetResourceLoaderDelegate delegate
 
 - (BOOL)resourceLoader:(AVAssetResourceLoader *)resourceLoader shouldWaitForRenewalOfRequestedResource:(AVAssetResourceRenewalRequest *)renewalRequest {
-    NSLog(@"VideoDownloader Delegate: shouldWaitForRenewalOfRequestedResource");
-    return YES;
+    return [self resourceLoader:resourceLoader shouldWaitForLoadingOfRequestedResource:renewalRequest];
 }
 
 - (BOOL)resourceLoader:(AVAssetResourceLoader *)resourceLoader shouldWaitForLoadingOfRequestedResource:(AVAssetResourceLoadingRequest *)loadingRequest {
@@ -334,59 +333,6 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
     }] resume];
 }
 
-/*
-- (void)download:(NSMutableURLRequest *)request completionHandler:(void(^)(NSData*, NSHTTPURLResponse*, NSError*))completionHandler {
-    NSLog(@"VideoDownloader Delegate: downloading %@", [request.URL absoluteString]);
-    NSURLConnection *connection = [[NSURLConnection alloc] initWithRequest:request delegate:self startImmediately:NO];
-    NSString *key = [NSString stringWithFormat:@"%p", connection];
-    self.dataMap[key] = [[NSMutableData alloc] init];
-    self.downloadCompletionHandlerMap[key] = completionHandler;
-    [connection start];
-}
-
-#pragma mark - NSURL Connection delegate
-
-- (void)connection:(NSURLConnection *)connection didReceiveResponse:(NSURLResponse *)response{
-    NSLog(@"VideoDownloader Delegate: didReceiveResponse");
-    if ([response isKindOfClass:[NSHTTPURLResponse class]]) {
-        NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse*)response;
-        NSString *key = [NSString stringWithFormat:@"%p", connection];
-        self.responseMap[key] = httpResponse;
-    }
-}
-
-- (void)connection:(NSURLConnection*)connection didReceiveData:(NSData *)data {
-    NSLog(@"VideoDownloader Delegate: didReceiveData");
-    NSString *key = [NSString stringWithFormat:@"%p", connection];
-    [self.dataMap[key] appendData:data];
-}
-
-- (void)connectionDidFinishLoading:(NSURLConnection*)connection {
-    NSLog(@"VideoDownloader Delegate: didReceiveData");
-    NSString *key = [NSString stringWithFormat:@"%p", connection];
-    void (^completionHandler)(NSData*, NSHTTPURLResponse*, NSError*) = self.downloadCompletionHandlerMap[key];
-    completionHandler(self.dataMap[key], self.responseMap[key], nil);
-    [self.dataMap removeObjectForKey:key];
-    [self.responseMap removeObjectForKey:key];
-    [self.downloadCompletionHandlerMap removeObjectForKey:key];
-}
-
-- (void)connection:(NSURLConnection*)connection didFailWithError:(NSError *)error {
-    NSLog(@"VideoDownloader Delegate: didFailWithError");
-    NSString *key = [NSString stringWithFormat:@"%p", connection];
-    void (^completionHandler)(NSData*, NSHTTPURLResponse*, NSError*) = self.downloadCompletionHandlerMap[key];
-    completionHandler(self.dataMap[key], self.responseMap[key], error);
-    [self.dataMap removeObjectForKey:key];
-    [self.responseMap removeObjectForKey:key];
-    [self.downloadCompletionHandlerMap removeObjectForKey:key];
-}
-
-- (NSURLRequest *)connection:(NSURLConnection *)connection willSendRequest:(NSURLRequest *)request redirectResponse:(NSURLResponse *)response {
-    NSLog(@"VideoDownloader Delegate: redirectResponse");
-    return request;
-}
-*/
-
 #pragma mark - Date Header methods
 
 + (NSDate *)expirationDateFromHeaders:(NSDictionary *)headers withStatusCode:(NSInteger)status {
@@ -488,6 +434,7 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
 }
 
 @end
+
 
 
 

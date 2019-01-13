@@ -77,24 +77,23 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
     }
 }
 
-+ (void)clearCacheForUrl:(NSString*)urlString {
-    NSLog(@"VideoDownloader Delegate: Clearing cache for %@", urlString);
-    NSURL *baseUrl = [NSURL URLWithString:urlString];
++ (void)clearCacheForUrl:(NSURL*)baseUrl {
+    NSLog(@"VideoDownloader Delegate: Clearing cache for %@", [baseUrl absoluteString]);
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:baseUrl];
     [[NSURLCache sharedURLCache] removeCachedResponseForRequest:request];
     NSString *keyFilePath = [RCTVideoDownloaderDelegate getKeyFilePath:baseUrl];
     if(!keyFilePath) {
-        NSLog(@"VideoDownloader Delegate: Unable to remove key file for %@, file reference does not exist.", urlString);
+        NSLog(@"VideoDownloader Delegate: Unable to remove key file for %@, file reference does not exist.", [baseUrl absoluteString]);
         return;
     }
     NSError *error;
     if(![[NSFileManager defaultManager] fileExistsAtPath:keyFilePath]) {
-        NSLog(@"VideoDownloader Delegate: Unable to remove key file for %@, file does not exist.", urlString);
+        NSLog(@"VideoDownloader Delegate: Unable to remove key file for %@, file does not exist.", [baseUrl absoluteString]);
         return;
     }
     [[NSFileManager defaultManager] removeItemAtPath:keyFilePath error:&error];
     if (error) {
-        NSLog(@"VideoDownloader Delegate: Error removing cached key for %@ download error: %@", urlString, error.localizedDescription);
+        NSLog(@"VideoDownloader Delegate: Error removing cached key for %@ download error: %@", [baseUrl absoluteString], error.localizedDescription);
     }
 }
 

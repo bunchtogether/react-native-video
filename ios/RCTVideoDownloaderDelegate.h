@@ -13,7 +13,7 @@
 
 - (void)addCompletionHandlerForAsset:(AVURLAsset *)asset completionHandler:(void (^)(NSError *))completionHandler;
 
-+ (void)clearCacheForUrl:(NSString*)urlString;
++ (void)clearCacheForUrl:(NSURL*)url;
 
 @end
 

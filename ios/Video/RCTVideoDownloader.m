@@ -153,7 +153,7 @@
       [self.tasks removeObjectForKey:cacheKey];
     }
   }
-  [RCTVideoDownloaderDelegate clearCacheForUrl:cacheKey];
+  [RCTVideoDownloaderDelegate clearCacheForUrl:[NSURL URLWithString:cacheKey]];
   [[NSUserDefaults standardUserDefaults] removeObjectForKey:cacheKey];
 }
 

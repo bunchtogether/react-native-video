@@ -473,6 +473,12 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
       
     }
     
+    if (_playerItem.status == AVPlayerItemStatusReadyToPlay) {
+      [self handlePlayerItemReadyToPlay];
+    } else if (_playerItem.status == AVPlayerItemStatusFailed) {
+      [self handlePlayerItemFailed];
+    }
+    
     [self addPlayerItemObservers];
     
     [_player addObserver:self forKeyPath:playbackRate options:0 context:nil];
@@ -505,6 +511,76 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
   return nil;
 }
 
+-(void)handlePlayerItemReadyToPlay {
+  NSLog(@"RCTVideo: AVPlayerItemStatusReadyToPlay");
+  if(!_videoLoadStarted) {
+    return;
+  }
+  _videoLoadStarted = NO;
+
+  if (self.onVideoLoad) {
+    
+    float duration = CMTimeGetSeconds(_playerItem.asset.duration);
+    
+    if (isnan(duration)) {
+      duration = 0.0;
+    }
+    
+    NSObject *width = @"undefined";
+    NSObject *height = @"undefined";
+    NSString *orientation = @"undefined";
+    
+    if ([_playerItem.asset tracksWithMediaType:AVMediaTypeVideo].count > 0) {
+      AVAssetTrack *videoTrack = [[_playerItem.asset tracksWithMediaType:AVMediaTypeVideo] objectAtIndex:0];
+      width = [NSNumber numberWithFloat:videoTrack.naturalSize.width];
+      height = [NSNumber numberWithFloat:videoTrack.naturalSize.height];
+      CGAffineTransform preferredTransform = [videoTrack preferredTransform];
+      
+      if ((videoTrack.naturalSize.width == preferredTransform.tx
+           && videoTrack.naturalSize.height == preferredTransform.ty)
+          || (preferredTransform.tx == 0 && preferredTransform.ty == 0))
+      {
+        orientation = @"landscape";
+      } else {
+        orientation = @"portrait";
+      }
+    }
+    
+    self.onVideoLoad(@{@"duration": [NSNumber numberWithFloat:duration],
+                       @"currentTime": [NSNumber numberWithFloat:CMTimeGetSeconds(_playerItem.currentTime)],
+                       @"canPlayReverse": [NSNumber numberWithBool:_playerItem.canPlayReverse],
+                       @"canPlayFastForward": [NSNumber numberWithBool:_playerItem.canPlayFastForward],
+                       @"canPlaySlowForward": [NSNumber numberWithBool:_playerItem.canPlaySlowForward],
+                       @"canPlaySlowReverse": [NSNumber numberWithBool:_playerItem.canPlaySlowReverse],
+                       @"canStepBackward": [NSNumber numberWithBool:_playerItem.canStepBackward],
+                       @"canStepForward": [NSNumber numberWithBool:_playerItem.canStepForward],
+                       @"naturalSize": @{
+                           @"width": width,
+                           @"height": height,
+                           @"orientation": orientation
+                           },
+                       @"audioTracks": [self getAudioTrackInfo],
+                       @"textTracks": [self getTextTrackInfo],
+                       @"target": self.reactTag});
+  }
+  
+  [self attachListeners];
+  [self applyModifiers];
+}
+
+- (void)handlePlayerItemFailed {
+  NSLog(@"RCTVideo: AVPlayerItemStatusFailed: %@", _playerItem.error.localizedDescription);
+  AVPlayerItemErrorLog *errorLog = [_playerItem errorLog];
+  if(errorLog) {
+    NSLog(@"RCTVideo: AVPlayerItemStatusFailed log: %@", [[NSString alloc] initWithData:[errorLog extendedLogData] encoding:[errorLog extendedLogDataStringEncoding]]);
+  }
+  if(self.onVideoError) {
+    self.onVideoError(@{@"error": @{@"code": [NSNumber numberWithInteger: _playerItem.error.code],
+                                    @"domain": _playerItem.error.domain},
+                        @"target": self.reactTag});
+  }
+}
+
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context
 {
   if (object == _playerItem) {
@@ -534,74 +610,19 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
     if ([keyPath isEqualToString:statusKeyPath]) {
       // Handle player item status change.
       if (_playerItem.status == AVPlayerItemStatusReadyToPlay) {
-        
-        float duration = CMTimeGetSeconds(_playerItem.asset.duration);
-        
-        if (isnan(duration)) {
-          duration = 0.0;
-        }
-        
-        NSObject *width = @"undefined";
-        NSObject *height = @"undefined";
-        NSString *orientation = @"undefined";
-        
-        if ([_playerItem.asset tracksWithMediaType:AVMediaTypeVideo].count > 0) {
-          AVAssetTrack *videoTrack = [[_playerItem.asset tracksWithMediaType:AVMediaTypeVideo] objectAtIndex:0];
-          width = [NSNumber numberWithFloat:videoTrack.naturalSize.width];
-          height = [NSNumber numberWithFloat:videoTrack.naturalSize.height];
-          CGAffineTransform preferredTransform = [videoTrack preferredTransform];
-          
-          if ((videoTrack.naturalSize.width == preferredTransform.tx
-               && videoTrack.naturalSize.height == preferredTransform.ty)
-              || (preferredTransform.tx == 0 && preferredTransform.ty == 0))
-          {
-            orientation = @"landscape";
-          } else {
-            orientation = @"portrait";
-          }
-        }
-        
-        if (self.onVideoLoad && _videoLoadStarted) {
-          self.onVideoLoad(@{@"duration": [NSNumber numberWithFloat:duration],
-                             @"currentTime": [NSNumber numberWithFloat:CMTimeGetSeconds(_playerItem.currentTime)],
-                             @"canPlayReverse": [NSNumber numberWithBool:_playerItem.canPlayReverse],
-                             @"canPlayFastForward": [NSNumber numberWithBool:_playerItem.canPlayFastForward],
-                             @"canPlaySlowForward": [NSNumber numberWithBool:_playerItem.canPlaySlowForward],
-                             @"canPlaySlowReverse": [NSNumber numberWithBool:_playerItem.canPlaySlowReverse],
-                             @"canStepBackward": [NSNumber numberWithBool:_playerItem.canStepBackward],
-                             @"canStepForward": [NSNumber numberWithBool:_playerItem.canStepForward],
-                             @"naturalSize": @{
-                                 @"width": width,
-                                 @"height": height,
-                                 @"orientation": orientation
-                                 },
-                             @"audioTracks": [self getAudioTrackInfo],
-                             @"textTracks": [self getTextTrackInfo],
-                             @"target": self.reactTag});
-        }
-        _videoLoadStarted = NO;
-        [self attachListeners];
-        [self applyModifiers];
-        
+        [self handlePlayerItemReadyToPlay];
       } else if (_playerItem.status == AVPlayerItemStatusFailed) {
-        NSLog(@"RCTVideo: AVPlayerItemStatusFailed: %@", _playerItem.error.localizedDescription);
-        AVPlayerItemErrorLog *errorLog = [_playerItem errorLog];
-        if(errorLog) {
-          NSLog(@"RCTVideo: AVPlayerItemStatusFailed log: %@", [[NSString alloc] initWithData:[errorLog extendedLogData] encoding:[errorLog extendedLogDataStringEncoding]]);
-        }
-        if(self.onVideoError) {
-          self.onVideoError(@{@"error": @{@"code": [NSNumber numberWithInteger: _playerItem.error.code],
-                                          @"domain": _playerItem.error.domain},
-                              @"target": self.reactTag});
-        }
+        [self handlePlayerItemFailed];
       }
     } else if ([keyPath isEqualToString:playbackBufferEmptyKeyPath] || [keyPath isEqualToString:playbackLikelyToKeepUpKeyPath]) {
       if(_playerItem.playbackBufferEmpty && !_playerItem.playbackLikelyToKeepUp && !_playerBufferEmpty) {
         _playerBufferEmpty = YES;
         self.onVideoBuffer(@{@"isBuffering": @(YES), @"target": self.reactTag});
+        NSLog(@"RCTVideo: Buffering");
       } else if(_playerBufferEmpty) {
         _playerBufferEmpty = NO;
         self.onVideoBuffer(@{@"isBuffering": @(NO), @"target": self.reactTag});
+        NSLog(@"RCTVideo: Not buffering");
       }
     }
   } else if (object == _playerLayer) {

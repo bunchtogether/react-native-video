@@ -372,7 +372,7 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
                             @"target": self.reactTag});
         _videoLoadStarted = NO;
       } else if(asset) {
-        [self setupPlayer:asset source:source options:assetOptions];
+          [self setupPlayer:asset source:source options:assetOptions];
       } else {
         self.onVideoError(@{@"error": @{@"code": @(-1),
                                       @"domain": @"RCTVideo"},
@@ -391,6 +391,8 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
 
 - (void)setupPlayer:(AVURLAsset *)asset source:(NSDictionary *)source options:(NSMutableDictionary *)assetOptions {
   dispatch_async(_queue, ^{
+    
+    NSLog(@"RCTVideo: Setup Player");
     
     if (_textTracks) {
       
@@ -441,40 +443,42 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
     } else {
       _playerItem = [AVPlayerItem playerItemWithAsset:asset];
     }
+  
     
-    [self addPlayerItemObservers];
-    
-    [_player pause];
-    [_playerViewController.view removeFromSuperview];
-    _playerViewController = nil;
-    
-    if (_playbackRateObserverRegistered) {
-      [_player removeObserver:self forKeyPath:playbackRate context:nil];
-      _playbackRateObserverRegistered = NO;
+    if(_player) {
+      [_player pause];
+      [_playerViewController.view removeFromSuperview];
+      _playerViewController = nil;
+      
+      if (_playbackRateObserverRegistered) {
+        [_player removeObserver:self forKeyPath:playbackRate context:nil];
+        _playbackRateObserverRegistered = NO;
+      }
+      
     }
     
     _player = [AVPlayer playerWithPlayerItem:_playerItem];
+    _player.automaticallyWaitsToMinimizeStalling = NO;
     _player.actionAtItemEnd = AVPlayerActionAtItemEndNone;
+
+    if(self.onVideoLoadStart) {
+      id uri = [source objectForKey:@"uri"];
+      id type = [source objectForKey:@"type"];
+      self.onVideoLoadStart(@{@"src": @{
+                                  @"uri": uri ? uri : [NSNull null],
+                                  @"type": type ? type : [NSNull null],
+                                  @"isNetwork": [NSNumber numberWithBool:(bool)[source objectForKey:@"isNetwork"]]},
+                              @"target": self.reactTag
+                              });
+      
+    }
+    
+    [self addPlayerItemObservers];
     
     [_player addObserver:self forKeyPath:playbackRate options:0 context:nil];
     _playbackRateObserverRegistered = YES;
     
     [self addPlayerTimeObserver];
-    
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-      if(self.onVideoLoadStart) {
-        
-        id uri = [source objectForKey:@"uri"];
-        id type = [source objectForKey:@"type"];
-        self.onVideoLoadStart(@{@"src": @{
-                                    @"uri": uri ? uri : [NSNull null],
-                                    @"type": type ? type : [NSNull null],
-                                    @"isNetwork": [NSNumber numberWithBool:(bool)[source objectForKey:@"isNetwork"]]},
-                                @"target": self.reactTag
-                                });
-        
-      }
-    });
     
   });
 }
@@ -500,7 +504,6 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
   }
   return nil;
 }
-
 
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context
 {
@@ -531,6 +534,7 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
     if ([keyPath isEqualToString:statusKeyPath]) {
       // Handle player item status change.
       if (_playerItem.status == AVPlayerItemStatusReadyToPlay) {
+        
         float duration = CMTimeGetSeconds(_playerItem.asset.duration);
         
         if (isnan(duration)) {
@@ -576,27 +580,26 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
                              @"target": self.reactTag});
         }
         _videoLoadStarted = NO;
-        
         [self attachListeners];
         [self applyModifiers];
-      } else if (_playerItem.status == AVPlayerItemStatusFailed && self.onVideoError) {
+        
+      } else if (_playerItem.status == AVPlayerItemStatusFailed) {
+        NSLog(@"RCTVideo: AVPlayerItemStatusFailed: %@", _playerItem.error.localizedDescription);
         AVPlayerItemErrorLog *errorLog = [_playerItem errorLog];
         if(errorLog) {
-          NSLog(@"RCTVideo player item error: %@", [[NSString alloc] initWithData:[errorLog extendedLogData] encoding:[errorLog extendedLogDataStringEncoding]]);
+          NSLog(@"RCTVideo: AVPlayerItemStatusFailed log: %@", [[NSString alloc] initWithData:[errorLog extendedLogData] encoding:[errorLog extendedLogDataStringEncoding]]);
         }
-        self.onVideoError(@{@"error": @{@"code": [NSNumber numberWithInteger: _playerItem.error.code],
-                                        @"domain": _playerItem.error.domain},
-                            @"target": self.reactTag});
+        if(self.onVideoError) {
+          self.onVideoError(@{@"error": @{@"code": [NSNumber numberWithInteger: _playerItem.error.code],
+                                          @"domain": _playerItem.error.domain},
+                              @"target": self.reactTag});
+        }
       }
     } else if ([keyPath isEqualToString:playbackBufferEmptyKeyPath] || [keyPath isEqualToString:playbackLikelyToKeepUpKeyPath]) {
       if(_playerItem.playbackBufferEmpty && !_playerItem.playbackLikelyToKeepUp && !_playerBufferEmpty) {
         _playerBufferEmpty = YES;
         self.onVideoBuffer(@{@"isBuffering": @(YES), @"target": self.reactTag});
       } else if(_playerBufferEmpty) {
-        // Continue playing (or not if paused) after being paused due to hitting an unbuffered zone.
-        if ((!(_controls || _fullscreenPlayerPresented) || _playerBufferEmpty) && _playerItem.playbackLikelyToKeepUp) {
-          [self setPaused:_paused];
-        }
         _playerBufferEmpty = NO;
         self.onVideoBuffer(@{@"isBuffering": @(NO), @"target": self.reactTag});
       }
@@ -734,6 +737,7 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
 
 - (void)setPaused:(BOOL)paused
 {
+  NSLog(@"RCTVideo: Set paused %@", paused ? @"YES" : @"NO");
   if (paused) {
     [_player pause];
     [_player setRate:0.0];

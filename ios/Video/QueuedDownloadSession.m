@@ -48,16 +48,23 @@ BLOCK(); \
 
 - (void)suspend {
     [self.task cancel];
+    self.task = nil;
     self.suspended = YES;
 }
 
 - (void)resume {
     AVURLAsset *asset = [AVURLAsset URLAssetWithURL:self.url options:@{AVURLAssetHTTPCookiesKey : self.cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
     RCTVideoDownloaderDelegate *delegate = [RCTVideoDownloaderDelegate sharedVideoDownloaderDelegate];
-    [delegate addCompletionHandlerForAsset:asset completionHandler:^(NSError *error){
+    [delegate addCompletionHandlerForAsset:asset completionHandler:^(BOOL playlistIsComplete, NSError *error){
         NSString * urlString = [self.url absoluteString];
         if(error) {
             NSLog(@"VideoDownloader: Error starting task for asset %@ with cache key %@: %@", urlString, self.cacheKey, error.localizedDescription);
+            return;
+        }
+        if(!playlistIsComplete) {
+            NSLog(@"VideoDownloader: Incomplete playlist for prefetch task for asset %@ with cache key %@", urlString, self.cacheKey);
+            [[RCTVideoDownloaderDelegate sharedVideoDownloaderDelegate] removeCompletionHandlerForAsset:asset];
+            [self completeOperation];
             return;
         }
         NSArray *preferredMediaSelections = [NSArray arrayWithObjects:asset.preferredMediaSelection,nil];
@@ -77,7 +84,7 @@ BLOCK(); \
         }
         self.task.taskDescription = self.cacheKey;
         [self.task resume];
-        NSLog(@"VideoDownloader: Got new task %lu for asset %@ with cache key %@", (unsigned long)self.task.taskIdentifier, urlString, self.cacheKey);
+        NSLog(@"VideoDownloader: Got new prefetch task %lu for asset %@ with cache key %@", (unsigned long)self.task.taskIdentifier, urlString, self.cacheKey);
     }];
     [asset.resourceLoader setDelegate:delegate queue:self.queue];
     asset.resourceLoader.preloadsEligibleContentKeys = YES;
@@ -96,8 +103,9 @@ BLOCK(); \
 }
 
 - (void)cancel {
-    [super cancel];
     [self.task cancel];
+    self.task = nil;
+    [super cancel];
 }
 
 - (void)start {
@@ -113,10 +121,16 @@ BLOCK(); \
     AVURLAsset *asset = [AVURLAsset URLAssetWithURL:self.url options:@{AVURLAssetHTTPCookiesKey : self.cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
     
     RCTVideoDownloaderDelegate *delegate = [RCTVideoDownloaderDelegate sharedVideoDownloaderDelegate];
-    [delegate addCompletionHandlerForAsset:asset completionHandler:^(NSError *error){
+    [delegate addCompletionHandlerForAsset:asset completionHandler:^(BOOL playlistIsComplete, NSError *error){
         NSString * urlString = [self.url absoluteString];
         if(error) {
-            NSLog(@"VideoDownloader: Error starting task for asset %@ with cache key %@: %@", urlString, self.cacheKey, error.localizedDescription);
+            NSLog(@"VideoDownloader: Error starting prefetch task for asset %@ with cache key %@: %@", urlString, self.cacheKey, error.localizedDescription);
+            return;
+        }
+        if(!playlistIsComplete) {
+            NSLog(@"VideoDownloader: Incomplete playlist for prefetch task for asset %@ with cache key %@", urlString, self.cacheKey);
+            [[RCTVideoDownloaderDelegate sharedVideoDownloaderDelegate] removeCompletionHandlerForAsset:asset];
+            [self completeOperation];
             return;
         }
         NSArray *preferredMediaSelections = [NSArray arrayWithObjects:asset.preferredMediaSelection,nil];
@@ -136,12 +150,12 @@ BLOCK(); \
         }
         self.task.taskDescription = self.cacheKey;
         [self.task resume];
-        NSLog(@"VideoDownloader: Got new task %lu for asset %@ with cache key %@", (unsigned long)self.task.taskIdentifier, urlString, self.cacheKey);
+        NSLog(@"VideoDownloader: Got new prefetch task %lu for asset %@ with cache key %@", (unsigned long)self.task.taskIdentifier, urlString, self.cacheKey);
     }];
     [asset.resourceLoader setDelegate:delegate queue:self.queue];
     asset.resourceLoader.preloadsEligibleContentKeys = YES;
     QUEUED_DOWNLOAD_BLOCK(@"isExecuting", ^{
-        NSLog(@"VideoDownloader: Prefetch executing for %@ with cache key %@", [self.url absoluteString], self.task.taskDescription);
+        NSLog(@"VideoDownloader: Prefetch executing for %@ with cache key %@", [self.url absoluteString], self.cacheKey);
         _executing = YES;
     });
 }
@@ -168,6 +182,7 @@ BLOCK(); \
         
         [self didChangeValueForKey:@"isExecuting"];
         [self didChangeValueForKey:@"isFinished"];
+        NSLog(@"VideoDownloader: Prefetch finished for %@ with cache key %@", [self.url absoluteString], self.cacheKey);
     }
 }
 

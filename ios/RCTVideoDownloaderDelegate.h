@@ -11,7 +11,8 @@
 
 + (instancetype)sharedVideoDownloaderDelegate;
 
-- (void)addCompletionHandlerForAsset:(AVURLAsset *)asset completionHandler:(void (^)(NSError *))completionHandler;
+- (void)addCompletionHandlerForAsset:(AVURLAsset *)asset completionHandler:(void (^)(BOOL, NSError *))completionHandler;
+- (void)removeCompletionHandlerForAsset:(AVURLAsset *)asset;
 
 + (void)clearCacheForUrl:(NSURL*)url;
 

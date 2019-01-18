@@ -8,6 +8,7 @@
 #import <MobileCoreServices/MobileCoreServices.h>
 #import <AVFoundation/AVFoundation.h>
 #import "RCTVideoDownloaderDelegate.h"
+#import "KTVHTTPCache.h"
 
 @interface RCTVideoDownloaderDelegate ()
 @property (nonatomic, strong) NSURL *baseUrl;
@@ -124,6 +125,11 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
         self.downloadCompletionHandlerMap = [NSMutableDictionary dictionary];
         self.completionHandlerMap = [NSMutableDictionary dictionary];
         self.queue = queue;
+        NSError *proxyError;
+        [KTVHTTPCache proxyStart:&proxyError];
+        if(proxyError) {
+            NSLog(@"VideoDownloader Delegate: Error starting proxy: %@", proxyError.localizedDescription);
+        }
     }
     return self;
 }
@@ -262,7 +268,9 @@ static NSDateFormatter* CreateDateFormatter(NSString *format) {
             if(segmentMatch.numberOfRanges > 1) {
                 NSString* segmentUrlString = [original substringWithRange:[segmentMatch rangeAtIndex:1]];
                 NSURL* segmentUrl = [NSURL URLWithString:segmentUrlString relativeToURL:request.URL];
-                replacements[segmentUrlString] = [segmentUrl absoluteString];
+                NSURL * proxyURL = [KTVHTTPCache proxyURLWithOriginalURL:segmentUrl];
+                replacements[segmentUrlString] = [proxyURL absoluteString];
+                NSLog(@"VideoDownloader Delegate: Proxy %@", [proxyURL absoluteString]);
             }
         }
         NSArray *playlistMatches = [[RCTVideoDownloaderDelegate playlistRegex] matchesInString:original options:0 range:NSMakeRange(0, [original length])];

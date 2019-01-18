@@ -20,7 +20,7 @@
 
 @property (nonatomic, copy) NSString *cacheKey;
 @property (nonatomic, assign) BOOL suspended;
-@property (nonatomic, strong, readonly) AVAggregateAssetDownloadTask *task;
+@property (nonatomic, strong) AVAggregateAssetDownloadTask *task;
 
 @end
 

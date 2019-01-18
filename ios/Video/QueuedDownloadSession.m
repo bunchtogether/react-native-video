@@ -19,7 +19,6 @@ BLOCK(); \
 @property (nonatomic, strong) AVAssetDownloadURLSession *session;
 @property (nonatomic, strong) RCTVideoDownloader *delegate;
 @property (nonatomic, strong) NSURL *url;
-@property (nonatomic, strong) AVAggregateAssetDownloadTask *task;
 @property (nonatomic, copy) NSArray *cookies;
 @property (nonatomic, assign) int attempt;
 @property (nonatomic, strong) dispatch_queue_t queue;
@@ -92,7 +91,10 @@ BLOCK(); \
 }
 
 - (void)retry {
-    [self.task cancel];
+    if(self.task) {
+        [self.task cancel];
+        self.task = nil;
+    }
     [self performSelector:@selector(resume) withObject:self afterDelay:self.attempt * self.attempt * 30];
     NSLog(@"VideoDownloader: Prefetch retry attempt %d for %@ starting in %d seconds", self.attempt, self.cacheKey, self.attempt * self.attempt * 30);
     self.attempt++;
@@ -103,8 +105,10 @@ BLOCK(); \
 }
 
 - (void)cancel {
-    [self.task cancel];
-    self.task = nil;
+    if(self.task) {
+        [self.task cancel];
+        self.task = nil;
+    }
     [super cancel];
 }
 
@@ -115,7 +119,7 @@ BLOCK(); \
     }
     if([self.delegate hasCachedAsset:self.cacheKey]) {
         NSLog(@"VideoDownloader: Prefetch cached asset found for %@ with cache key %@", [self.url absoluteString], self.cacheKey);
-        [self completeOperation];
+        QUEUED_DOWNLOAD_BLOCK(@"isFinished", ^{ _finished = YES; });
         return;
     }
     AVURLAsset *asset = [AVURLAsset URLAssetWithURL:self.url options:@{AVURLAssetHTTPCookiesKey : self.cookies, AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];

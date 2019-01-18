@@ -364,7 +364,7 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
   NSMutableDictionary *assetOptions = [[NSMutableDictionary alloc] init];
   if (isNetwork) {
     NSString *cacheKey = [source objectForKey:@"cacheKey"];
-    NSString *ck = cacheKey ? cacheKey : uri;
+    NSString *ck = [NSString stringWithFormat:@"RCTVideo-%@", cacheKey ? cacheKey : uri];
     [[RCTVideoDownloader sharedVideoDownloader] getAsset:[NSURL URLWithString:uri] cacheKey:ck cookies:cookies completion:^(AVURLAsset *asset, NSError *error){
       if(error) {
         self.onVideoError(@{@"error": @{@"code": [NSNumber numberWithInteger: _playerItem.error.code],
@@ -569,11 +569,18 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
 }
 
 - (void)handlePlayerItemFailed {
+  if(_source) {
+    NSString *uri = [_source objectForKey:@"uri"];
+    NSString *cacheKey = [_source objectForKey:@"cacheKey"];
+    NSString *ck = [NSString stringWithFormat:@"RCTVideo-%@", cacheKey ? cacheKey : uri];
+    [[RCTVideoDownloader sharedVideoDownloader] clearCachedAsset:ck];
+  }  
   NSLog(@"RCTVideo: AVPlayerItemStatusFailed: %@", _playerItem.error.localizedDescription);
   AVPlayerItemErrorLog *errorLog = [_playerItem errorLog];
   if(errorLog) {
     NSLog(@"RCTVideo: AVPlayerItemStatusFailed log: %@", [[NSString alloc] initWithData:[errorLog extendedLogData] encoding:[errorLog extendedLogDataStringEncoding]]);
   }
+  
   if(self.onVideoError) {
     self.onVideoError(@{@"error": @{@"code": [NSNumber numberWithInteger: _playerItem.error.code],
                                     @"domain": _playerItem.error.domain},

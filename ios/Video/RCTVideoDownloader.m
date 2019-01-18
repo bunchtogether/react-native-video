@@ -37,7 +37,6 @@
     sessionConfig.HTTPCookieAcceptPolicy = NSHTTPCookieAcceptPolicyAlways;
     sessionConfig.shouldUseExtendedBackgroundIdleMode = YES;
     sessionConfig.HTTPShouldUsePipelining = YES;
-    sessionConfig.URLCache = [NSURLCache sharedURLCache];
     self.session = [AVAssetDownloadURLSession sessionWithConfiguration:sessionConfig assetDownloadDelegate:self delegateQueue:[NSOperationQueue mainQueue]];
     self.session.sessionDescription = @"ReactNativeVideoDownloader";
     self.prefetchOperationQueue = [[NSOperationQueue alloc] init];
@@ -45,7 +44,7 @@
     self.suspended = NO;
     self.cacheKeys = [[NSMutableSet alloc] init];
     self.queue = dispatch_queue_create("Video Downloader Queue", DISPATCH_QUEUE_SERIAL);
-    self.delegateQueue = dispatch_queue_create("Video Downloader Queue", DISPATCH_QUEUE_SERIAL);
+    self.delegateQueue = dispatch_queue_create("Video Downloader Delegate Queue", DISPATCH_QUEUE_SERIAL);
     self.delegate = [RCTVideoDownloaderDelegate sharedVideoDownloaderDelegate];
   }
   return self;
@@ -226,7 +225,10 @@
 - (AVAggregateAssetDownloadTask *)getPrefetchTask:(NSString *)cacheKey urlString:(NSString *)urlString {
   for(DownloadSessionOperation *operation in self.prefetchOperationQueue.operations) {
     if(operation.task && [operation.cacheKey isEqualToString:cacheKey]) {
-      return operation.task;
+      AVAggregateAssetDownloadTask *task = operation.task;
+      operation.task = nil;
+      [operation cancel];
+      return task;
     }
   }
   return nil;
@@ -258,7 +260,7 @@
       self.tasks[cacheKey] = task;
     }
     [task resume];
-    NSLog(@"VideoDownloader: Got new task %lu for asset %@ with cache key %@", (unsigned long)task.taskIdentifier, urlString, cacheKey);
+    NSLog(@"VideoDownloader: Got new task %lu for asset %@ with cache key %@, suspending prefetch queue", (unsigned long)task.taskIdentifier, urlString, cacheKey);
     [self.prefetchOperationQueue setSuspended:YES];
   }];
   [asset.resourceLoader setDelegate:self.delegate queue:self.delegateQueue];
@@ -361,6 +363,7 @@
     if([self.cacheKeys containsObject: cacheKey]) {
       NSLog(@"VideoDownloader: Redundant cache download skipped for %@ with cache key %@", uri, cacheKey);
     } else if(![self hasCachedAsset:cacheKey]) {
+      NSLog(@"VideoDownloader: Prefetch download started for %@ with cache key %@", uri, cacheKey);
       NSURL *url = [NSURL URLWithString:uri];
       NSURLComponents *urlComponents = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:YES];
       if([urlComponents.path containsString:@".m3u8"]) {
@@ -456,6 +459,7 @@ aggregateAssetDownloadTask:(AVAggregateAssetDownloadTask *)aggregateAssetDownloa
   NSURL *location = self.downloadLocationUrls[cacheKey];
   [self.tasks removeObjectForKey:cacheKey];
   if([self.tasks count] == 0) {
+    NSLog(@"VideoDownloader: Resuming prefetch queue");
     [self.prefetchOperationQueue setSuspended:NO];
   }
   [self.downloadLocationUrls removeObjectForKey:cacheKey];

@@ -44,8 +44,9 @@ RCT_EXPORT_METHOD(prefetch:(NSString *)uri
             [[NSHTTPCookieStorage sharedHTTPCookieStorage] setCookie:cookie];
         }
     }
+    NSString *ck = [NSString stringWithFormat:@"RCTVideo-%@", cacheKey ? cacheKey : uri];
     NSArray *cookies = [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookies];
-    [[RCTVideoDownloader sharedVideoDownloader] prefetch:uri cacheKey:cacheKey cookies:cookies resolve:resolve reject:reject];
+    [[RCTVideoDownloader sharedVideoDownloader] prefetch:uri cacheKey:ck cookies:cookies resolve:resolve reject:reject];
 }
 RCT_EXPORT_VIEW_PROPERTY(src, NSDictionary);
 RCT_EXPORT_VIEW_PROPERTY(maxBitRate, float);

@@ -212,7 +212,6 @@
         }
         [task resume];
         NSLog(@"VideoDownloader: Got new task %lu for bookmarked asset %@ with cache key %@", (unsigned long)task.taskIdentifier, urlString, cacheKey);
-        [self.prefetchOperationQueue setSuspended:YES];
       }];
       [asset.resourceLoader setDelegate:self.delegate queue:self.delegateQueue];
       asset.resourceLoader.preloadsEligibleContentKeys = YES;
@@ -261,7 +260,6 @@
     }
     [task resume];
     NSLog(@"VideoDownloader: Got new task %lu for asset %@ with cache key %@, suspending prefetch queue", (unsigned long)task.taskIdentifier, urlString, cacheKey);
-    [self.prefetchOperationQueue setSuspended:YES];
   }];
   [asset.resourceLoader setDelegate:self.delegate queue:self.delegateQueue];
   asset.resourceLoader.preloadsEligibleContentKeys = YES;
@@ -458,10 +456,6 @@ aggregateAssetDownloadTask:(AVAggregateAssetDownloadTask *)aggregateAssetDownloa
   }
   NSURL *location = self.downloadLocationUrls[cacheKey];
   [self.tasks removeObjectForKey:cacheKey];
-  if([self.tasks count] == 0) {
-    NSLog(@"VideoDownloader: Resuming prefetch queue");
-    [self.prefetchOperationQueue setSuspended:NO];
-  }
   [self.downloadLocationUrls removeObjectForKey:cacheKey];
   if (error) {
     NSLog(@"VideoDownloader: Download error for task %lu, with code %ld, %@ for asset %@ with cache key %@", (unsigned long)task.taskIdentifier, (long)[error code], [error localizedDescription], urlString, cacheKey);

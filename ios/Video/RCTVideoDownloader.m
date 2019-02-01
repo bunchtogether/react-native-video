@@ -332,22 +332,7 @@
       }];
       return;
     }
-    
-    AVURLAsset *bookmarkedAsset = [self getBookmarkedAsset:urlString cacheKey:cacheKey];
-    if(bookmarkedAsset) {
-      NSLog(@"VideoDownloader: Found bookmark for asset %@ with cache key %@", urlString, cacheKey);
-      [self validateAsset:bookmarkedAsset cacheKey:cacheKey completion:^(AVURLAsset *asset, NSError *error){
-        if(error) {
-          NSLog(@"VideoDownloader: Bookmark for %@ contains error: %@", urlString, error.localizedDescription);
-          [self clearCachedAsset:cacheKey];
-          AVURLAsset* asset = [self getNewAsset:url urlString:urlString cacheKey:cacheKey cookies:cookies];
-          [self validateAsset:asset cacheKey:cacheKey completion:completion];
-        } else {
-          completion(asset, nil);
-        }
-      }];
-      return;
-    }
+
     
     AVURLAsset *asset = [self getNewAsset:url
                                urlString:urlString

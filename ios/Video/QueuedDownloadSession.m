@@ -95,8 +95,13 @@ BLOCK(); \
         [self.task cancel];
         self.task = nil;
     }
-    [self performSelector:@selector(resume) withObject:self afterDelay:self.attempt * self.attempt * 30];
-    NSLog(@"VideoDownloader: Prefetch retry attempt %d for %@ starting in %d seconds", self.attempt, self.cacheKey, self.attempt * self.attempt * 30);
+    [self performSelectorOnMainThread:@selector(scheduleResume) withObject:nil waitUntilDone:YES];
+}
+
+- (void)scheduleResume {
+    NSTimeInterval waitTime = self.attempt < 5 ? self.attempt * self.attempt : 60;
+    NSLog(@"VideoDownloader: Prefetch retry attempt %d for %@ starting in %f seconds", self.attempt, self.cacheKey, waitTime);
+    [self performSelector:@selector(resume) withObject:nil afterDelay:waitTime];
     self.attempt++;
 }
 

@@ -765,7 +765,6 @@ typedef void(^downloadCompletionBlock)(AVURLAsset *asset, NSError *error);
 
 - (void)setPaused:(BOOL)paused
 {
-  NSLog(@"RCTVideo: Set paused %@", paused ? @"YES" : @"NO");
   if (paused) {
     [_player pause];
     [_player setRate:0.0];

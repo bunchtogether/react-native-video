@@ -35,7 +35,6 @@
     sessionConfig.allowsCellularAccess = true;
     sessionConfig.sessionSendsLaunchEvents = true;
     sessionConfig.HTTPCookieAcceptPolicy = NSHTTPCookieAcceptPolicyAlways;
-    sessionConfig.shouldUseExtendedBackgroundIdleMode = YES;
     sessionConfig.HTTPShouldUsePipelining = YES;
     self.session = [AVAssetDownloadURLSession sessionWithConfiguration:sessionConfig assetDownloadDelegate:self delegateQueue:[NSOperationQueue mainQueue]];
     self.session.sessionDescription = @"ReactNativeVideoDownloader";
@@ -136,9 +135,9 @@
 }
 
 - (void)validateAsset:(AVURLAsset *)asset cacheKey:(NSString *)cacheKey completion:(void (^)(AVURLAsset *, NSError *))completion {
-  [asset loadValuesAsynchronouslyForKeys:@[@"duration"] completionHandler:^{
+  [asset loadValuesAsynchronouslyForKeys:@[@"playable"] completionHandler:^{
     NSError *error = nil;
-    AVKeyValueStatus status = [asset statusOfValueForKey:@"duration" error:&error];
+    AVKeyValueStatus status = [asset statusOfValueForKey:@"playable" error:&error];
     if(status == AVKeyValueStatusLoaded) {
       NSLog(@"VideoDownloader: Validated asset with cache key %@", cacheKey);
       @synchronized(self.validatedAssets) {
@@ -146,11 +145,6 @@
       }
       
       AVAssetCache *assetCache = asset.assetCache;
-      if(assetCache && assetCache.isPlayableOffline) {
-        NSLog(@"VideoDownloader: Asset with cache key %@ is playable offline", cacheKey);
-      } else {
-        NSLog(@"VideoDownloader: Asset with cache key %@ is not playable offline", cacheKey);
-      }
       if(completion){
         completion(asset, nil);
       }
@@ -322,7 +316,7 @@
       }];
       return;
     }
-    
+  
     AVURLAsset *bookmarkedAsset = [self getBookmarkedAsset:urlString cacheKey:cacheKey];
     if(bookmarkedAsset) {
       NSLog(@"VideoDownloader: Found bookmark for asset %@ with cache key %@", urlString, cacheKey);
@@ -338,6 +332,7 @@
       }];
       return;
     }
+  
     
     AVURLAsset *asset = [self getNewAsset:url
                                urlString:urlString
@@ -450,7 +445,7 @@ aggregateAssetDownloadTask:(AVAggregateAssetDownloadTask *)aggregateAssetDownloa
       [operation completeOperation];
       if(!self.validatedAssets[cacheKey]) {
         // Validate after prefetching
-        [self validateAsset:assetDownloadTask.URLAsset cacheKey:cacheKey completion:nil];
+        // [self validateAsset:assetDownloadTask.URLAsset cacheKey:cacheKey completion:nil];
       }
     }
   }

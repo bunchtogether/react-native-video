@@ -300,7 +300,7 @@
       }];
       return;
     }
-    
+    /*
     AVAggregateAssetDownloadTask *prefetchTask = [self getPrefetchTask:cacheKey urlString: urlString];
     if(prefetchTask) {
       NSLog(@"VideoDownloader: Found prefetch task %lu for asset %@ with cache key %@", (unsigned long)prefetchTask.taskIdentifier, urlString, cacheKey);
@@ -316,6 +316,7 @@
       }];
       return;
     }
+    */
   
     AVURLAsset *bookmarkedAsset = [self getBookmarkedAsset:urlString cacheKey:cacheKey];
     if(bookmarkedAsset) {
@@ -445,7 +446,7 @@ aggregateAssetDownloadTask:(AVAggregateAssetDownloadTask *)aggregateAssetDownloa
       [operation completeOperation];
       if(!self.validatedAssets[cacheKey]) {
         // Validate after prefetching
-        // [self validateAsset:assetDownloadTask.URLAsset cacheKey:cacheKey completion:nil];
+        [self validateAsset:assetDownloadTask.URLAsset cacheKey:cacheKey completion:nil];
       }
     }
   }

@@ -13,7 +13,6 @@
 @property (nonatomic, strong) NSMutableDictionary *tasks;
 @property (nonatomic, strong) RCTVideoDownloaderDelegate *delegate;
 @property (nonatomic, strong) NSMutableDictionary *validatedAssets;
-@property (nonatomic, strong) NSMutableDictionary *downloadLocationUrls;
 @property (nonatomic, strong) NSOperationQueue *prefetchOperationQueue;
 @property (nonatomic, strong) NSMutableSet *cacheKeys;
 @property (nonatomic, assign) BOOL suspended;
@@ -29,7 +28,6 @@
   if (self) {
     self.tasks = [[NSMutableDictionary alloc] init];
     self.validatedAssets = [[NSMutableDictionary alloc] init];
-    self.downloadLocationUrls = [[NSMutableDictionary alloc] init];
     NSURLSessionConfiguration *sessionConfig = [NSURLSessionConfiguration backgroundSessionConfigurationWithIdentifier:@"ReactNativeVideoDownloader"];
     sessionConfig.networkServiceType = NSURLNetworkServiceTypeVideo;
     sessionConfig.allowsCellularAccess = true;
@@ -86,23 +84,6 @@
   }
   for(DownloadSessionOperation *operation in self.prefetchOperationQueue.operations) {
     if(operation.task && [operation.cacheKey isEqualToString:cacheKey]) {
-      return YES;
-    }
-  }
-  NSData *bookmarkData = [[NSUserDefaults standardUserDefaults] objectForKey:cacheKey];
-  if(bookmarkData) {
-    NSError *error = nil;
-    BOOL stale;
-    NSURL *location = [NSURL URLByResolvingBookmarkData:bookmarkData
-                                                options:NSURLBookmarkResolutionWithoutUI
-                                          relativeToURL:nil
-                                    bookmarkDataIsStale:&stale
-                                                  error:&error];
-    if(error) {
-      return NO;
-    } else if(stale) {
-      return NO;
-    } else if(location) {
       return YES;
     }
   }
@@ -166,53 +147,6 @@
       completion(nil, error);
     }
   }];
-}
-
-- (AVURLAsset *)getBookmarkedAsset:(NSString *)urlString cacheKey:(NSString *)cacheKey {
-  NSData *bookmarkData = [[NSUserDefaults standardUserDefaults] objectForKey:cacheKey];
-  if(bookmarkData) {
-    NSError *error = nil;
-    BOOL stale;
-    NSURL *location = [NSURL URLByResolvingBookmarkData:bookmarkData
-                                                options:NSURLBookmarkResolutionWithoutUI
-                                          relativeToURL:nil
-                                    bookmarkDataIsStale:&stale
-                                                  error:&error];
-    
-    if(error) {
-      NSLog(@"VideoDownloader: Error getting cached asset %@ with cache key %@: %@", urlString, cacheKey, error);
-    } else if(stale) {
-      NSLog(@"VideoDownloader: Cached asset %@ with cache key %@ is stale", urlString, cacheKey);
-    } else if(location) {
-      AVURLAsset *asset = [AVURLAsset URLAssetWithURL:location options:@{AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidNone)}];
-      [self.delegate addCompletionHandlerForAsset:asset completionHandler:^(BOOL playlistIsComplete, NSError *error){
-        if(error) {
-          NSLog(@"VideoDownloader: Error starting task for bookmarked asset %@ with cache key %@: %@", urlString, cacheKey, error.localizedDescription);
-          return;
-        }
-        if(!playlistIsComplete) {
-          NSLog(@"VideoDownloader: Incomplete playlist for bookmarked asset %@ with cache key %@", urlString, cacheKey);
-          return;
-        }
-        NSArray *preferredMediaSelections = [NSArray arrayWithObjects:asset.preferredMediaSelection,nil];
-        AVAggregateAssetDownloadTask *task = [self.session aggregateAssetDownloadTaskWithURLAsset:asset
-                                                                                  mediaSelections:preferredMediaSelections
-                                                                                       assetTitle:@"Video Download"
-                                                                                 assetArtworkData:nil
-                                                                                          options:nil];
-        task.taskDescription = cacheKey;
-        @synchronized(self.tasks) {
-          self.tasks[cacheKey] = task;
-        }
-        [task resume];
-        NSLog(@"VideoDownloader: Got new task %lu for bookmarked asset %@ with cache key %@", (unsigned long)task.taskIdentifier, urlString, cacheKey);
-      }];
-      [asset.resourceLoader setDelegate:self.delegate queue:self.delegateQueue];
-      asset.resourceLoader.preloadsEligibleContentKeys = YES;
-      return asset;
-    }
-  }
-  return nil;
 }
 
 - (AVAggregateAssetDownloadTask *)getPrefetchTask:(NSString *)cacheKey urlString:(NSString *)urlString {
@@ -332,7 +266,6 @@
       }];
       return;
     }
-  
     
     AVURLAsset *asset = [self getNewAsset:url
                                urlString:urlString
@@ -377,22 +310,6 @@
 }
 
 - (void)URLSession:(NSURLSession *)session
-didBecomeInvalidWithError:(NSError *)error {
-  NSLog(@"VideoDownloader: didBecomeInvalidWithError");
-}
-
-- (void)URLSession:(NSURLSession *)session
-taskIsWaitingForConnectivity:(NSURLSessionTask *)task {
-  NSLog(@"VideoDownloader: taskIsWaitingForConnectivity");
-}
-
-- (void)URLSession:(NSURLSession *)session
- assetDownloadTask:(AVAssetDownloadTask *)assetDownloadTask
-didFinishDownloadingToURL:(NSURL *)location {
-  NSLog(@"VideoDownloader: didFinishDownloadingToURL");
-}
-
-- (void)URLSession:(NSURLSession *)session
 aggregateAssetDownloadTask:(AVAggregateAssetDownloadTask *)aggregateAssetDownloadTask
 didCompleteForMediaSelection:(AVMediaSelection *)mediaSelection {
   NSLog(@"VideoDownloader: didCompleteForMediaSelection");
@@ -402,7 +319,6 @@ didCompleteForMediaSelection:(AVMediaSelection *)mediaSelection {
     NSLog(@"VideoDownloader: Missing cache key for task %lu asset %@ in didCompleteForMediaSelection", (unsigned long)aggregateAssetDownloadTask.taskIdentifier, urlString);
     return;
   }
-  
   [aggregateAssetDownloadTask resume];
 }
 
@@ -479,6 +395,7 @@ aggregateAssetDownloadTask:(AVAggregateAssetDownloadTask *)aggregateAssetDownloa
     NSLog(@"VideoDownloader: Unable to save bookmark for task %lu, asset %@ with cache key %@", (unsigned long)task.taskIdentifier, urlString, cacheKey);
   }
 }
+
 
 - (void)pauseDownloads {
   if(self.suspended) {
